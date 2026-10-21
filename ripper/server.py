@@ -266,7 +266,10 @@ def main():
     drive.start()
     builder.worker.start()
     from waitress import serve
-    logging.getLogger("ripper").info("listening on :%d, drives: %s", config.PORT, ", ".join(config.DRIVES))
+    from . import __version__
+    log = logging.getLogger("ripper")
+    log.info("Audiobook Ripper %s (changes: https://github.com/ssrt33/audiobook-ripper/blob/main/CHANGELOG.md)", __version__)
+    log.info("listening on :%d, drives: %s", config.PORT, ", ".join(config.DRIVES))
     serve(app, host="0.0.0.0", port=config.PORT, threads=8)
 
 
