@@ -2,8 +2,7 @@
 # Change the two /mnt/... paths to your own datasets first.
 services:
   audiobook-ripper:
-    image: audiobook-ripper:latest
-    pull_policy: never          # the image is built on the NAS itself (see README)
+    image: ghcr.io/ssrt33/audiobook-ripper:latest
     container_name: audiobook-ripper
     restart: unless-stopped
     ports:

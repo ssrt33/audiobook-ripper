@@ -37,17 +37,10 @@ Create (or pick) a dataset for finished books, e.g. `tank/audiobooks`, and one f
 app, e.g. `tank/apps/audiobook-ripper`. Give the `apps` user (568) read/write on both.
 If Audiobookshelf already has a library dataset, point the ripper straight at it.
 
-### 3. Copy the project to the NAS and build the image
+### 3. Install the app
 
-Copy this folder to the NAS, e.g. to `/mnt/tank/apps/audiobook-ripper/src`
-(SMB share, `scp`, or upload the zip and unzip it). Then in the shell:
-
-```sh
-cd /mnt/tank/apps/audiobook-ripper/src
-sudo docker build -t audiobook-ripper:latest .
-```
-
-### 4. Install the app
+The image is published at `ghcr.io/ssrt33/audiobook-ripper` (amd64 and arm64), so there's
+nothing to build.
 
 **Apps > Discover Apps > Custom App > Install via YAML**. Name it `audiobook-ripper`, paste
 `truenas-app.yaml`, change the three `/mnt/tank/...` paths to yours, and Save.
@@ -56,19 +49,22 @@ Open `http://<your-nas-ip>:8686`.
 
 ### Or install with Dockge
 
-Create a stack named `audiobook-ripper` in Dockge, copy this project into the stack's folder,
-paste `docker-compose.example.yaml` into the compose editor with your paths filled in, and
-press Deploy. Dockge builds the image on first deploy. To update later, copy the new files in
-and run `sudo docker compose up -d --build` in the stack folder.
+Create a stack named `audiobook-ripper` in Dockge, paste `docker-compose.example.yaml` into
+the compose editor with your paths filled in, and press Deploy.
 
 The work folder can live inside your Audiobookshelf library: the app drops an `.ignore` file
 in it so half-finished rips aren't scanned as books.
 
 ### Updating
 
-Rebuild the image (step 3), then stop and start the app in the TrueNAS Apps screen.
-The image has `pull_policy: never`, so don't use the app's "Update" button (there's
-nothing for it to pull).
+Use the **Update** button in TrueNAS Apps or Dockge, or run `sudo docker compose pull && sudo docker compose up -d`
+in the stack folder. `latest` follows the main branch; pin a version tag such as
+`ghcr.io/ssrt33/audiobook-ripper:1.0.0` if you'd rather update on your own schedule.
+
+### Building it yourself
+
+Clone the repo, replace `image:` with `build: .` in your compose file, and run
+`sudo docker compose up -d --build`.
 
 ## Settings
 

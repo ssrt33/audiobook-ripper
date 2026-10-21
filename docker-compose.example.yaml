@@ -1,9 +1,9 @@
-# Example stack for Dockge, Portainer or plain `docker compose up -d --build`.
+# Example stack for Dockge, Portainer or plain `docker compose up -d`.
 # Copy to compose.yaml and change the three host paths on the left of each volume.
 services:
   audiobook-ripper:
-    build: .
-    image: audiobook-ripper:latest
+    image: ghcr.io/ssrt33/audiobook-ripper:latest
+    # build: .                 # use this instead of image: to build from source
     container_name: audiobook-ripper
     restart: unless-stopped
     ports:
