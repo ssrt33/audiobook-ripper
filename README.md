@@ -96,7 +96,7 @@ Paths, drives and file ownership stay in the YAML.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `DRIVES` | `/dev/sr0` | Drives to watch, comma separated. Add `demo` for a fake drive to try the app without CDs. |
+| `DRIVES` | `auto` | `auto` watches every CD drive it can see, including one plugged in or renamed later. Or list them: `/dev/sr0,/dev/sr1`. Add `demo` for a fake drive to try the app without CDs. |
 | `FOLDER_TEMPLATE` | `{author}/{series}/{series_seq_title}` | Library layout. Fields: `author series series_seq title series_seq_title year narrator`. Empty parts are dropped. |
 | `PUID` / `PGID` | `568` | Owner of files it writes. |
 
@@ -138,8 +138,16 @@ stereo is about 58 MB per hour, so a 17-hour book is around 1 GB. Pick 64 kbps i
 
 ## Troubleshooting
 
-- **Drive shows "Can't open drive"** – the `devices:` line in the YAML doesn't match your
-  drive, or the drive was unplugged after the app started. Fix and restart the app.
+- **Drive shows "Drive disconnected"** – the drive dropped off the NAS. USB drives do this
+  after a power dip or with a loose cable, often during long rips. Unplug it, wait a few seconds,
+  plug it back in, then run `ls -l /dev/sr*` to see its name. The disc that was ripping shows as
+  failed; put it back in and it re-rips into the same slot. Earlier discs are kept.
+- **App won't start: "error gathering device information … /dev/sr0"** – Docker won't start a
+  container whose `devices:` entry is missing. Reconnect the drive (above), or switch to hot-plug
+  mode (the commented block in the example YAML) so the app starts without the drive and picks it
+  up when it appears.
+- **Drive keeps disconnecting** – try a different USB port (rear ports on the board are better
+  than front or hub ports), a shorter cable, or a drive with its own power supply.
 - **A disc fails** – clean it and put it back in. It re-rips into the same slot.
   Badly scratched library discs may need `PARANOIA_OPTS: "-z"`.
 - **Discs in the wrong order** – use the ↑ ↓ buttons before pressing Finish.

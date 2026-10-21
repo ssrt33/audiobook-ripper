@@ -161,6 +161,11 @@ def set_drive(dev, **kw):
         cur.update(kw)
 
 
+def remove_drive(dev):
+    with _lock:
+        _drives.pop(dev, None)
+
+
 def drives():
     with _lock:
         return [dict(v) for v in _drives.values()]

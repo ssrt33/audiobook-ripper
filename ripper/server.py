@@ -291,6 +291,21 @@ def main():
         os.makedirs(d, exist_ok=True)
     store.init()
     settings.init()
+
+    # As PID 1 in a container, Python ignores SIGTERM unless told otherwise, so `docker stop`
+    # used to wait 10 s and then kill the app (exit code 137). Save state and exit cleanly instead.
+    import signal
+
+    def _stop(signum, _frame):
+        logging.getLogger("ripper").info("stopping (%s)", signal.Signals(signum).name)
+        try:
+            store.save()
+        finally:
+            os._exit(0)
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+
     drive.start()
     builder.worker.start()
     from waitress import serve

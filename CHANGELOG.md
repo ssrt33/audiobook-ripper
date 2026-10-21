@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.0 — 2026-10-21
+
+### Fixed
+- **Stopping or updating the app no longer force-kills it** (exit code 137). It now saves and
+  exits straight away when Docker asks it to stop, instead of being killed 10 seconds later.
+
+### Added
+- **`DRIVES=auto`** (now the default) watches every CD drive it can see, including one plugged in
+  later or one that comes back under a new name like `/dev/sr1` after a USB drop-out.
+- **Clear "Drive disconnected" message** on the page when a drive drops off, plus a log line when
+  it goes away and when it's back.
+- **Optional hot-plug mode** in the example YAML, so the container can start without a drive
+  attached and keep going if a USB drive drops out.
+
+### Changed
+- The app can read a drive plugged in after start-up (adds the usual `cdrom` group).
+
 ## 1.2.0 — 2026-10-21
 
 ### Changed

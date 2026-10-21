@@ -6,8 +6,9 @@ def _bool(name, default):
     return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
-# Optical drives to watch, comma separated. "demo" adds a simulated drive for testing.
-DRIVES = [d.strip() for d in os.environ.get("DRIVES", "/dev/sr0").split(",") if d.strip()]
+# Optical drives to watch, comma separated. "auto" watches every /dev/srN, including drives
+# plugged in or renamed later. "demo" adds a simulated drive for testing.
+DRIVES = [d.strip() for d in os.environ.get("DRIVES", "auto").split(",") if d.strip()]
 
 # Where in-progress rips live (needs ~350 MB per disc as FLAC until the book is built).
 WORK_DIR = os.environ.get("WORK_DIR", "/work")

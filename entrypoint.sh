@@ -3,7 +3,7 @@
 set -e
 PUID="${PUID:-568}"
 PGID="${PGID:-568}"
-DRIVES="${DRIVES:-/dev/sr0}"
+DRIVES="${DRIVES:-auto}"
 
 mkdir -p "${WORK_DIR:-/work}" "${CONFIG_DIR:-/config}"
 # Also mark the work dir for Audiobookshelf's full scans. Its live watcher ignores this, so the
@@ -12,8 +12,9 @@ touch "${WORK_DIR:-/work}/.ignore" 2>/dev/null || true
 chown "$PUID:$PGID" "${WORK_DIR:-/work}" "${CONFIG_DIR:-/config}" 2>/dev/null || true
 
 # Collect the group ids that own the drive devices (and their /dev/sg* twins) so we can read them.
-SUPP_GIDS="$PGID"
-for dev in $(echo "$DRIVES" | tr ',' ' ') /dev/sg*; do
+# 24 is the usual "cdrom" group, included so a drive plugged in after start-up is readable too.
+SUPP_GIDS="$PGID,24"
+for dev in $(echo "$DRIVES" | tr ',' ' ') /dev/sr* /dev/sg*; do
   if [ -e "$dev" ]; then
     gid=$(stat -c %g "$dev")
     case ",$SUPP_GIDS," in *",$gid,"*) ;; *) SUPP_GIDS="$SUPP_GIDS,$gid" ;; esac

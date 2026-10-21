@@ -11,8 +11,14 @@ services:
     devices:
       - /dev/sr0:/dev/sr0       # your optical drive
       # - /dev/sr1:/dev/sr1     # a second drive (also add it to DRIVES)
+    # Hot-plug mode (optional): lets the app start with no drive attached and keep going if a USB
+    # drive drops out or comes back as /dev/sr1. To use it, delete the devices: block above, add
+    # "- /dev:/dev" to volumes below, and uncomment these two rules (CD drives and SCSI generic):
+    # device_cgroup_rules:
+    #   - "b 11:* rmw"
+    #   - "c 21:* rmw"
     environment:
-      DRIVES: /dev/sr0
+      DRIVES: auto              # or a list like /dev/sr0,/dev/sr1
       PUID: "568"               # owner of written files (568 = TrueNAS "apps")
       PGID: "568"
       TZ: Etc/UTC

@@ -1,5 +1,6 @@
 """Watches optical drives and rips each audio CD that goes in into the open book."""
 import fcntl
+import glob
 import hashlib
 import os
 import re
@@ -25,9 +26,12 @@ cancelled = set()
 
 
 class Watcher(threading.Thread):
-    def __init__(self, dev):
+    def __init__(self, dev, auto=False):
         super().__init__(daemon=True, name=f"watch-{dev}")
         self.dev = dev
+        self.auto = auto          # found by auto-detect: forget it if it goes away for good
+        self.stopped = False
+        self.missing_since = None
         self.handled = False  # we've already dealt with the disc currently in the tray
         store.set_drive(dev, state="starting", message="")
 
@@ -79,7 +83,7 @@ class Watcher(threading.Thread):
 
     # ---- main loop ----
     def run(self):
-        while True:
+        while not self.stopped:
             try:
                 self.tick()
             except Exception as e:  # keep watching no matter what
@@ -92,9 +96,24 @@ class Watcher(threading.Thread):
         try:
             st = self.drive_status()
         except OSError as e:
-            store.set_drive(self.dev, state="missing", message=f"Can't open drive ({e.strerror})")
-            time.sleep(8)
+            if self.missing_since is None:
+                self.missing_since = time.time()
+                log.warning("drive %s went away (%s)", self.dev, e.strerror)
+            if self.auto and time.time() - self.missing_since > 20:
+                # Unplugged for good, or it came back under another name; auto-detect re-adds it.
+                log.info("forgetting %s", self.dev)
+                self.stopped = True
+                watchers.pop(self.dev, None)
+                store.remove_drive(self.dev)
+                return
+            store.set_drive(self.dev, state="missing",
+                            message="Drive disconnected — check the cable" if e.errno == 2
+                            else f"Can't open drive ({e.strerror})")
+            time.sleep(5)
             return
+        if self.missing_since is not None:
+            log.info("drive %s is back", self.dev)
+            self.missing_since = None
 
         if st != CDS_DISC_OK:
             self.handled = False
@@ -251,8 +270,31 @@ class DemoWatcher(Watcher):
 watchers = {}
 
 
+def _add(dev, auto=False):
+    if dev in watchers:
+        return
+    w = DemoWatcher(dev) if dev == "demo" else Watcher(dev, auto=auto)
+    watchers[dev] = w
+    w.start()
+
+
+def _autodetect():
+    """DRIVES=auto: watch every /dev/srN, including ones plugged in (or renamed) later."""
+    while True:
+        for dev in sorted(glob.glob("/dev/sr[0-9]*")):
+            if dev not in watchers:
+                log.info("found drive %s", dev)
+                _add(dev, auto=True)
+        if watchers:
+            store.remove_drive("none")
+        else:
+            store.set_drive("none", state="missing", message="No CD drive found — plug one in")
+        time.sleep(5)
+
+
 def start():
     for dev in config.DRIVES:
-        w = DemoWatcher(dev) if dev == "demo" else Watcher(dev)
-        watchers[dev] = w
-        w.start()
+        if dev != "auto":
+            _add(dev)
+    if "auto" in config.DRIVES:
+        threading.Thread(target=_autodetect, daemon=True, name="autodetect").start()
