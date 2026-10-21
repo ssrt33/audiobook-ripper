@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-10-21
+
+### Changed
+- **Refreshed web page, dark theme only.** New look throughout: a sticky header with drive status,
+  a larger "insert disc / ripping" banner with an animated disc and progress bar, a bigger cover,
+  cleaner inputs and dropdowns, numbered disc rows, status pills in the Books list, and tidier
+  Settings. The output path and **Finish book** button now sit on one line. The page no longer
+  switches to a light theme when your computer is in light mode.
+
 ## 1.1.2 — 2026-10-21
 
 ### Fixed
