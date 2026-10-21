@@ -171,6 +171,7 @@ class Worker(threading.Thread):
                 with store.lock():
                     book.update(status="done", progress=100, output=out, finished=time.time())
                     store.save()
+                log.info("finished %s -> %s", book["id"], out)
                 notify("Audiobook ready", f"{book['title']} is in your library.")
                 if not config.KEEP_RIPS:
                     shutil.rmtree(store.book_dir(book["id"]), ignore_errors=True)
