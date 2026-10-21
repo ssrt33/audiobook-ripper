@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.2 — 2026-10-21
+
+### Fixed
+- **README no longer says the work folder can live inside the Audiobookshelf library.** The
+  `.ignore` file only stops Audiobookshelf's full scans, not its live folder watcher, so rips
+  showed up as untitled books with ID names and then as "missing" issues. Keep the work folder
+  outside the library; the README now explains how to move it and clean up.
+
+### Added
+- **Startup warning** in the log when the work folder is inside the library folder.
+
 ## 1.1.1 — 2026-10-21
 
 ### Changed

@@ -52,8 +52,16 @@ Open `http://<your-nas-ip>:8686`.
 Create a stack named `audiobook-ripper` in Dockge, paste `docker-compose.example.yaml` into
 the compose editor with your paths filled in, and press Deploy.
 
-The work folder can live inside your Audiobookshelf library: the app drops an `.ignore` file
-in it so half-finished rips aren't scanned as books.
+**Keep the work folder outside your Audiobookshelf library.** Audiobookshelf's live folder
+watcher picks up any new audio file under the library, so rips in a work folder inside it show
+up as untitled books (named after random IDs) that turn into "missing" issues once the book is
+built. An `.ignore` file doesn't stop the watcher. A sibling folder such as
+`/mnt/tank/audiobooks_work` next to `/mnt/tank/audiobooks` is fine. The app logs a warning at
+startup if it finds the work folder inside the library.
+
+If you already ripped into a folder inside the library: stop the app, move the folder out (if it's
+its own dataset, use `zfs rename`, and stop Audiobookshelf and any SMB share on it first), point
+the `/work` volume at the new spot, then in Audiobookshelf run **Scan** and **Issues > Remove All**.
 
 ### Updating
 

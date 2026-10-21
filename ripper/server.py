@@ -2,6 +2,7 @@
 import logging
 import os
 import shutil
+import threading
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
@@ -257,6 +258,33 @@ def demo_insert():
     return jsonify({"ok": True})
 
 
+def warn_if_work_in_library():
+    """Warn if the work dir is visible inside the library (same folder via another mount)."""
+    log = logging.getLogger("ripper")
+    try:
+        w = os.stat(config.WORK_DIR)
+        target = (w.st_dev, w.st_ino)
+        base = os.path.abspath(config.LIBRARY_DIR)
+        for root, dirs, _ in os.walk(base):
+            depth = root[len(base):].count(os.sep)
+            for d in dirs:
+                try:
+                    st = os.stat(os.path.join(root, d))
+                except OSError:
+                    continue
+                if (st.st_dev, st.st_ino) == target:
+                    log.warning(
+                        "The work folder is inside your library (%s). Audiobookshelf will import "
+                        "half-finished rips as books. Move the work folder outside the library: "
+                        "https://github.com/ssrt33/audiobook-ripper#or-install-with-dockge",
+                        os.path.join(root, d))
+                    return
+            if depth >= 2:
+                dirs[:] = []
+    except Exception:
+        log.debug("work folder check skipped", exc_info=True)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     for d in (config.WORK_DIR, config.LIBRARY_DIR, config.CONFIG_DIR):
@@ -270,6 +298,7 @@ def main():
     log = logging.getLogger("ripper")
     log.info("Audiobook Ripper %s (changes: https://github.com/ssrt33/audiobook-ripper/blob/main/CHANGELOG.md)", __version__)
     log.info("listening on :%d, drives: %s", config.PORT, ", ".join(config.DRIVES))
+    threading.Thread(target=warn_if_work_in_library, daemon=True).start()
     serve(app, host="0.0.0.0", port=config.PORT, threads=8)
 
 

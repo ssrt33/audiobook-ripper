@@ -6,7 +6,8 @@ PGID="${PGID:-568}"
 DRIVES="${DRIVES:-/dev/sr0}"
 
 mkdir -p "${WORK_DIR:-/work}" "${CONFIG_DIR:-/config}"
-# Tell Audiobookshelf not to scan half-finished rips if the work dir sits inside a library.
+# Also mark the work dir for Audiobookshelf's full scans. Its live watcher ignores this, so the
+# work dir should still sit outside the library (the app warns at startup if it doesn't).
 touch "${WORK_DIR:-/work}/.ignore" 2>/dev/null || true
 chown "$PUID:$PGID" "${WORK_DIR:-/work}" "${CONFIG_DIR:-/config}" 2>/dev/null || true
 
