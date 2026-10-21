@@ -96,6 +96,32 @@ The page settings can also be given starting values in the YAML (`AUTO_EJECT`, `
 `KEEP_RIPS`, `DEFAULT_CHANNELS` (default `2`, stereo), `DEFAULT_BITRATE`, `DEFAULT_CHAPTERS`,
 `PARANOIA_OPTS`, `AUDIBLE_REGION`, `NOTIFY_URL`). Once something is saved from the page, the page wins.
 
+## Phone alerts
+
+Get a notification when a disc is done and it's time to put in the next one, when a disc fails,
+and when a book is ready. It uses [ntfy](https://ntfy.sh), a free notification app with no account.
+
+1. **Install the ntfy app** from the App Store (iPhone) or Play Store (Android) and allow notifications.
+2. **Pick a channel name nobody will guess.** Anyone who knows the name can read the messages, so
+   use something random like `abr-7f3k9q2m8x1d` rather than `audiobooks`. To make one in the
+   TrueNAS shell: `python3 -c "import secrets;print('abr-'+secrets.token_hex(6))"`
+3. **Subscribe in the app:** tap **+**, enter your channel name, leave the server as `ntfy.sh`,
+   and tap **Subscribe**.
+4. **Add it to the ripper:** in the web page's **Settings** panel, paste
+   `https://ntfy.sh/your-channel-name` into **Alert address**, click outside the box to save, then
+   press **Test**. Your phone should buzz within a few seconds.
+
+What you'll get:
+
+- **Disc done**: "Disc 3 of *Book* is ripped. Insert disc 4."
+- **Disc failed**: which disc and why, so you can clean it and put it back in.
+- **Audiobook ready**: the M4B is in your library.
+- **Build failed**: if a book couldn't be built.
+
+If the test doesn't arrive, check the app's notification permission, then look at the app's logs for
+a `notify failed` line (the NAS may not be able to reach ntfy.sh). Any service that accepts a
+plain-text POST works too, including a self-hosted ntfy server.
+
 ## Disk space
 
 Rips are kept as FLAC until the book is built: roughly 300–400 MB per disc. A 15-disc
