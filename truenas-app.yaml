@@ -18,7 +18,7 @@ services:
       AUTO_EJECT: "true"
       AUTO_START_BOOK: "true"
       KEEP_RIPS: "false"
-      DEFAULT_BITRATE: 64k
+      DEFAULT_BITRATE: 128k
       DEFAULT_CHANNELS: "2"
       DEFAULT_CHAPTERS: disc
       AUDIBLE_REGION: us

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-10-21
+
+### Changed
+- New books default to **128 kbps** (was 64 kbps) for better sound, especially in stereo.
+  A finished book is about 58 MB per hour. Pick a lower quality in Settings to save space.
+
 ## 1.1.0 — 2026-10-21
 
 ### Added

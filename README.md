@@ -76,7 +76,7 @@ save straight away to `/config/settings.json` and survive restarts and updates.
 - **Auto-eject**: open the tray when a disc finishes.
 - **Auto-start books**: start a new book when a disc goes in and none is open.
 - **Keep rips after build**: keep the FLAC rips so you can edit details and rebuild (about 350 MB a disc).
-- **New book defaults**: sound (stereo or mono), quality (48–128 kbps), chapters (per disc, per track
+- **New book defaults**: sound (stereo or mono), quality (48–128 kbps, default 128), chapters (per disc, per track
   or none), rip mode (normal, fast for clean discs, thorough for scratched ones) and the Audible
   lookup region. Each book can still be changed on its own before you press Finish.
 - **Phone alerts**: an address that gets a plain-text message on "disc done, insert the next one" and
@@ -99,8 +99,8 @@ The page settings can also be given starting values in the YAML (`AUTO_EJECT`, `
 ## Disk space
 
 Rips are kept as FLAC until the book is built: roughly 300–400 MB per disc. A 15-disc
-book needs about 6 GB in the work dataset while you're ripping. The finished M4B at 64 kbps
-mono is about 30 MB per hour (stereo at the same bitrate is the same size; raise the bitrate for better stereo).
+book needs about 6 GB in the work dataset while you're ripping. The finished M4B at the default 128 kbps
+stereo is about 58 MB per hour, so a 17-hour book is around 1 GB. Pick 64 kbps in Settings to halve that.
 
 ## Troubleshooting
 
