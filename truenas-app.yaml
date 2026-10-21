@@ -1,0 +1,30 @@
+# Paste this into TrueNAS: Apps > Discover Apps > Custom App > Install via YAML.
+# Change the two /mnt/... paths to your own datasets first.
+services:
+  audiobook-ripper:
+    image: audiobook-ripper:latest
+    pull_policy: never          # the image is built on the NAS itself (see README)
+    container_name: audiobook-ripper
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    devices:
+      - /dev/sr0:/dev/sr0       # your USB/SATA optical drive
+      # - /dev/sr1:/dev/sr1     # a second drive, if you have one (also add it to DRIVES)
+    environment:
+      DRIVES: /dev/sr0
+      PUID: "568"               # TrueNAS "apps" user
+      PGID: "568"
+      TZ: Etc/UTC
+      AUTO_EJECT: "true"
+      AUTO_START_BOOK: "true"
+      KEEP_RIPS: "false"
+      DEFAULT_BITRATE: 64k
+      DEFAULT_CHANNELS: "1"
+      DEFAULT_CHAPTERS: disc
+      AUDIBLE_REGION: us
+      # NOTIFY_URL: https://ntfy.sh/pick-a-long-random-topic-name
+    volumes:
+      - /mnt/tank/audiobooks:/audiobooks              # finished books land here
+      - /mnt/tank/apps/audiobook-ripper/work:/work    # temporary rips
+      - /mnt/tank/apps/audiobook-ripper/config:/config

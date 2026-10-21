@@ -1,0 +1,30 @@
+# Example stack for Dockge, Portainer or plain `docker compose up -d --build`.
+# Copy to compose.yaml and change the three host paths on the left of each volume.
+services:
+  audiobook-ripper:
+    build: .
+    image: audiobook-ripper:latest
+    container_name: audiobook-ripper
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    devices:
+      - /dev/sr0:/dev/sr0       # your optical drive
+      # - /dev/sr1:/dev/sr1     # a second drive (also add it to DRIVES)
+    environment:
+      DRIVES: /dev/sr0
+      PUID: "568"               # owner of written files (568 = TrueNAS "apps")
+      PGID: "568"
+      TZ: Etc/UTC
+      AUTO_EJECT: "true"
+      AUTO_START_BOOK: "true"
+      KEEP_RIPS: "false"
+      DEFAULT_BITRATE: 64k
+      DEFAULT_CHANNELS: "1"
+      DEFAULT_CHAPTERS: disc
+      AUDIBLE_REGION: us
+      # NOTIFY_URL: https://ntfy.sh/pick-a-long-random-topic-name
+    volumes:
+      - /path/to/audiobooks:/audiobooks                # finished books land here
+      - /path/to/audiobook-ripper/work:/work           # temporary rips
+      - /path/to/audiobook-ripper/config:/config

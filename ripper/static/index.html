@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audiobook Ripper</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23d9822b'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f4f1ea; --panel:#fffdf8; --ink:#1f1d1a; --muted:#6f6a61; --line:#e2dccf;
+  --accent:#c4651a; --accent-ink:#fff; --accent-soft:#f8e6d4;
+  --ok:#2f7d4f; --ok-soft:#e1f1e6; --bad:#b3372b; --bad-soft:#f7e0dc; --busy:#2d6aa3; --busy-soft:#dfeaf6;
+  --shadow:0 1px 2px rgba(40,30,10,.06),0 4px 16px rgba(40,30,10,.05);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#171614; --panel:#201f1c; --ink:#ece8df; --muted:#a29b8f; --line:#34312c;
+  --accent:#e2873f; --accent-ink:#1a1206; --accent-soft:#3a2a1b;
+  --ok:#62c08a; --ok-soft:#1c3226; --bad:#ec7a6c; --bad-soft:#3a201c; --busy:#7fb2e6; --busy-soft:#1c2a3a;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans)}
+button,input,select,textarea{font:inherit;color:inherit}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;font-size:17px}
+.brand svg{flex:none}
+.drives{display:flex;gap:8px;flex-wrap:wrap}
+.drive{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:13px;background:var(--bg)}
+.drive .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.drive[data-s=ripping] .dot{background:var(--busy);animation:pulse 1s infinite}
+.drive[data-s=idle] .dot,.drive[data-s=empty] .dot,.drive[data-s=open] .dot{background:var(--ok)}
+.drive[data-s=missing] .dot,.drive[data-s=error] .dot{background:var(--bad)}
+.drive[data-s=waiting] .dot{background:var(--accent)}
+.drive code{font-family:var(--mono);color:var(--muted);font-size:12px}
+@keyframes pulse{50%{opacity:.3}}
+main{max-width:1180px;margin:0 auto;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:16px}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.panel>h2{margin:0;padding:14px 18px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.cue{display:flex;align-items:center;gap:16px;padding:18px;border-bottom:1px solid var(--line);background:var(--accent-soft);border-radius:14px 14px 0 0}
+.cue .big{font-size:26px;font-weight:750;letter-spacing:-.02em;line-height:1.1}
+.cue .sub{color:var(--muted);font-size:14px}
+.cue.busy{background:var(--busy-soft)}
+.cue .disc-ico{flex:none}
+.book{display:grid;grid-template-columns:150px minmax(0,1fr);gap:18px;padding:18px}
+@media (max-width:560px){.book{grid-template-columns:1fr}}
+.cover{width:150px;aspect-ratio:1;border-radius:10px;border:1px dashed var(--line);display:grid;place-items:center;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;overflow:hidden;background:var(--bg);position:relative}
+.cover img{width:100%;height:100%;object-fit:cover}
+.cover:hover{border-color:var(--accent)}
+.cover-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.fields{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.f{display:flex;flex-direction:column;gap:3px;grid-column:span 3}
+.f.w6{grid-column:span 6}.f.w2{grid-column:span 2}.f.w1{grid-column:span 1}.f.w4{grid-column:span 4}
+@media (max-width:560px){.f,.f.w2,.f.w1,.f.w4{grid-column:span 6}}
+.f label{font-size:12px;color:var(--muted)}
+.f input,.f select,.f textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);outline:none}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--accent)}
+.f textarea{min-height:70px;resize:vertical}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:550;font-size:14px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.small{padding:4px 9px;font-size:13px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+.discs{padding:0 18px 18px}
+.discs h3{font-size:13px;margin:0 0 8px;color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.disc{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--bg)}
+.disc .n{font:700 18px var(--mono);text-align:center;color:var(--muted)}
+.disc .meta{font-size:13px;color:var(--muted)}
+.disc .title{font-weight:600}
+.disc.error{border-color:var(--bad);background:var(--bad-soft)}
+.disc.ripping{border-color:var(--busy)}
+.bar{height:5px;border-radius:5px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--busy);transition:width .4s}
+.bar.ok i{background:var(--ok)}
+.empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
+.foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid var(--line)}
+.foot .opts{display:flex;gap:10px;flex-wrap:wrap}
+.foot .opts .f{grid-column:auto;min-width:130px}
+.path{font:12px var(--mono);color:var(--muted);word-break:break-all}
+.lib-item{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:start}
+.lib-item:last-child{border-bottom:0}
+.lib-item .thumb{width:44px;height:44px;border-radius:6px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.lib-item .thumb img{width:100%;height:100%;object-fit:cover}
+.lib-item .t{font-weight:600;line-height:1.25}
+.lib-item .a{font-size:13px;color:var(--muted)}
+.tag{display:inline-block;font-size:11px;font-weight:650;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em;margin-top:5px}
+.tag.done{background:var(--ok-soft);color:var(--ok)}
+.tag.failed{background:var(--bad-soft);color:var(--bad)}
+.tag.building,.tag.queued{background:var(--busy-soft);color:var(--busy)}
+.tag.collecting{background:var(--accent-soft);color:var(--accent)}
+.row-actions{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.err{color:var(--bad);font-size:13px;margin-top:4px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;box-shadow:var(--shadow);opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.show{opacity:1}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--ink);padding:0;width:min(760px,calc(100% - 32px));max-height:85vh}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg-head{display:flex;gap:8px;padding:14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.dlg-head input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.results{padding:6px 14px 14px;overflow:auto}
+.res{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);align-items:start}
+.res img{width:72px;height:72px;object-fit:cover;border-radius:6px;background:var(--bg)}
+.res .t{font-weight:650}
+.res .m{font-size:13px;color:var(--muted)}
+.res .d{font-size:13px;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.src{font-size:11px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.match{color:var(--ok)}.mismatch{color:var(--bad)}
+.muted{color:var(--muted)}
+.settings{padding:12px 16px;font-size:13px;color:var(--muted);display:grid;gap:4px}
+.settings b{color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="var(--accent)"/><circle cx="16" cy="16" r="9" fill="none" stroke="var(--accent-ink)" stroke-opacity=".35"/><circle cx="16" cy="16" r="4" fill="var(--accent-ink)"/></svg>
+    Audiobook Ripper
+  </div>
+  <div class="drives" id="drives"></div>
+</header>
+
+<main>
+  <section class="panel" id="current"></section>
+  <aside>
+    <section class="panel">
+      <h2>Books <button class="btn small" id="newBookBtn">+ New book</button></h2>
+      <div id="library"></div>
+    </section>
+    <section class="panel" style="margin-top:20px">
+      <h2>Settings</h2>
+      <div class="settings" id="settings"></div>
+    </section>
+  </aside>
+</main>
+
+<dialog id="lookup">
+  <form class="dlg-head" id="lookupForm">
+    <input id="q" placeholder="Title, author, or both" autocomplete="off">
+    <button class="btn primary">Search</button>
+    <button class="btn ghost" type="button" id="closeLookup" aria-label="Close">✕</button>
+  </form>
+  <div class="results" id="results"></div>
+</dialog>
+<input type="file" id="coverFile" accept="image/*" hidden>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null, viewing = null, lastCue = "", coverBust = Date.now();
+const dirty = {};       // field -> true while waiting to save
+let saveTimer = null;
+
+async function api(method, url, body) {
+  const opt = {method, headers:{}};
+  if (body instanceof FormData) opt.body = body;
+  else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers["content-type"] = "application/json"; }
+  const r = await fetch(url, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200);
+}
+const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  return h ? `${h}h ${String(m).padStart(2,"0")}m` : `${m}m ${String(s%60).padStart(2,"0")}s`; };
+
+function chime() {
+  try {
+    const a = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1320].forEach((f, i) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(a.destination);
+      const t = a.currentTime + i * .18;
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2, t + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, t + .35); o.start(t); o.stop(t + .4);
+    });
+  } catch (e) {}
+}
+
+async function refresh() {
+  try { S = await api("GET", "/api/state"); }
+  catch (e) { return; }
+  if (!viewing || !S.books.find(b => b.id === viewing)) viewing = S.active || null;
+  render();
+}
+
+function book(id) { return S.books.find(b => b.id === id); }
+
+function render() {
+  renderDrives(); renderLibrary(); renderCurrent(); renderSettings();
+}
+
+function renderDrives() {
+  $("#drives").innerHTML = S.drives.map(d => `
+    <div class="drive" data-s="${esc(d.state)}" title="${esc(d.device)}">
+      <span class="dot"></span><code>${esc(d.device.replace("/dev/",""))}</code>
+      <span>${esc(d.message || d.state)}</span>
+      ${S.settings.demo && d.device === "demo" ? `<button class="btn small" onclick="demoInsert()">Insert test disc</button>` : ""}
+      ${d.state !== "missing" && d.state !== "open" && d.state !== "empty" && d.state !== "ripping" && d.device !== "demo"
+        ? `<button class="btn small ghost" onclick="ejectDrive('${esc(d.device)}')">Eject</button>` : ""}
+    </div>`).join("");
+}
+
+function renderSettings() {
+  const s = S.settings;
+  $("#settings").innerHTML = `
+    <div>Library: <b class="path">${esc(s.library)}</b></div>
+    <div>Auto-eject: <b>${s.auto_eject ? "on" : "off"}</b> · Auto-start books: <b>${s.auto_start ? "on" : "off"}</b></div>
+    <div>Keep FLAC rips after build: <b>${s.keep_rips ? "yes" : "no"}</b> · Phone alerts: <b>${s.notify ? "on" : "off"}</b></div>
+    <div class="muted" style="margin-top:4px">Change these with environment variables in the app's YAML.</div>`;
+}
+
+function renderLibrary() {
+  if (!S.books.length) { $("#library").innerHTML = `<div class="settings">No books yet. Put a disc in to start one.</div>`; return; }
+  $("#library").innerHTML = S.books.map(b => {
+    const label = {collecting: b.id === S.active ? "open" : "paused", queued: "queued", building: `building ${b.progress}%`,
+                   done: "in library", failed: "failed"}[b.status];
+    return `<div class="lib-item">
+      <div class="thumb">${b.has_cover && !b.rips_deleted ? `<img src="/api/books/${b.id}/cover?${coverBust}" alt="">` : ""}</div>
+      <div>
+        <div class="t">${esc(b.title || "Untitled book")}</div>
+        <div class="a">${esc(b.author || "Unknown author")} · ${b.discs.length} disc${b.discs.length===1?"":"s"} · ${fmt(b.seconds)}</div>
+        <span class="tag ${b.status}">${label}</span>
+        ${b.status === "building" ? `<div class="bar"><i style="width:${b.progress}%"></i></div>` : ""}
+        ${b.status === "failed" ? `<div class="err">${esc(b.error)}</div>` : ""}
+        ${b.status === "done" ? `<div class="path" style="margin-top:4px">${esc(b.output)}</div>` : ""}
+        <div class="row-actions">
+          ${b.status !== "done" && b.id !== viewing ? `<button class="btn small" onclick="view('${b.id}')">Open</button>` : ""}
+          ${b.status === "failed" ? `<button class="btn small" onclick="finish('${b.id}')">Retry</button>` : ""}
+          ${b.status === "done" && !b.rips_deleted ? `<button class="btn small" onclick="view('${b.id}')">Edit &amp; rebuild</button>` : ""}
+          ${b.status !== "building" ? `<button class="btn small ghost danger" onclick="delBook('${b.id}')">${b.status === "done" ? "Forget" : "Delete"}</button>` : ""}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function cueFor(b) {
+  const ripping = S.drives.find(d => d.state === "ripping");
+  if (ripping) {
+    const pct = ripping.tracks ? Math.round(ripping.track / ripping.tracks * 100) : 0;
+    return {cls:"busy", big: ripping.message, sub: `Ripping on ${ripping.device}. Keep this page open for a chime when it's done.`, pct};
+  }
+  const waiting = S.drives.find(d => d.state === "waiting");
+  if (waiting) return {cls:"", big:"Disc waiting", sub:"Start a book below and it will rip straight away."};
+  if (!b) return {cls:"", big:"Put a disc in", sub: S.settings.auto_start ? "A new book starts automatically with the first disc." : "Start a new book first, then insert disc 1."};
+  if (b.status !== "collecting") return null;
+  const next = b.discs.length + 1;
+  return {cls:"", big:`Insert disc ${next}`, sub: b.discs.length ? "When the last disc is done, fill in the details and press Finish book." : "Discs are added to this book in the order you put them in."};
+}
+
+function renderCurrent() {
+  const el = $("#current");
+  const b = viewing ? book(viewing) : null;
+  const cue = (!b || b.id === S.active || b.status === "collecting") ? cueFor(b && b.id === S.active ? b : (b && b.status==="collecting" ? b : null)) : null;
+
+  const cueKey = cue ? cue.big : "";
+  if (lastCue && cueKey !== lastCue && /^Insert disc/.test(cueKey) && /^Disc \d+: track/.test(lastCue)) chime();
+  lastCue = cueKey;
+  document.title = cue ? `${cue.big} · Audiobook Ripper` : "Audiobook Ripper";
+
+  const cueHtml = cue ? `<div class="cue ${cue.cls}">
+      <svg class="disc-ico" width="46" height="46" viewBox="0 0 32 32" aria-hidden="true" ${cue.cls==="busy"?'style="animation:spin 2s linear infinite"':""}>
+        <circle cx="16" cy="16" r="15" fill="var(--panel)" stroke="var(--line)"/><path d="M16 1a15 15 0 0 1 15 15" stroke="var(--accent)" stroke-width="2" fill="none"/>
+        <circle cx="16" cy="16" r="4.5" fill="var(--bg)" stroke="var(--line)"/></svg>
+      <div style="flex:1;min-width:0"><div class="big">${esc(cue.big)}</div><div class="sub">${esc(cue.sub)}</div>
+      ${cue.pct !== undefined ? `<div class="bar"><i style="width:${cue.pct}%"></i></div>` : ""}</div></div>` : "";
+
+  if (!b) {
+    el.innerHTML = cueHtml + `<div style="padding:18px"><div class="empty">No book open. ${S.settings.auto_start ? "Insert a disc, or" : ""} press <b>+ New book</b> to set up the details first.</div></div>`;
+    return;
+  }
+
+  const editable = ["collecting","failed","queued","done"].includes(b.status);
+  const isActive = b.id === S.active;
+  const anyRipping = b.discs.some(d => d.status === "ripping");
+  const keepFocus = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k;
+  // Rebuild the form only when switching books, so typing isn't interrupted by the 1.5s refresh.
+  if (el.dataset.book !== b.id || !el.querySelector(".fields")) {
+    el.dataset.book = b.id;
+    el.innerHTML = `<div id="cue"></div>
+      <div class="book">
+        <div>
+          <div class="cover" id="cover" title="Click to upload a cover"></div>
+          <div class="cover-actions">
+            <button class="btn small" onclick="openLookup()">Look up book</button>
+          </div>
+        </div>
+        <div class="fields">
+          ${field("title","Title","w4")}${field("year","Year","w2")}
+          ${field("author","Author","w3")}${field("narrator","Narrator","w3")}
+          ${field("series","Series","w4")}${field("series_seq","Book #","w2")}
+          ${field("subtitle","Subtitle","w3")}${field("publisher","Publisher","w3")}
+          <div class="f w6"><label for="f_description">Description</label><textarea id="f_description" data-k="description"></textarea></div>
+        </div>
+      </div>
+      <div class="discs" id="discList"></div>
+      <div class="foot">
+        <div class="opts">
+          <div class="f"><label>Chapters</label><select data-k="chapters">
+            <option value="disc">One per disc</option><option value="track">One per CD track</option><option value="none">None</option></select></div>
+          <div class="f"><label>Quality</label><select data-k="bitrate">
+            <option value="48k">48 kbps (small)</option><option value="64k">64 kbps (standard)</option>
+            <option value="96k">96 kbps</option><option value="128k">128 kbps (music-heavy)</option></select></div>
+          <div class="f"><label>Channels</label><select data-k="channels">
+            <option value="1">Mono (spoken word)</option><option value="2">Stereo</option></select></div>
+        </div>
+        <div id="finishArea"></div>
+      </div>`;
+    el.querySelectorAll("[data-k]").forEach(inp => {
+      inp.addEventListener("input", () => queueSave(inp));
+      inp.addEventListener("change", () => queueSave(inp));
+    });
+    $("#cover").onclick = () => $("#coverFile").click();
+    for (const k in dirty) delete dirty[k];
+  }
+  // Fill values that the user isn't currently editing.
+  el.querySelectorAll("[data-k]").forEach(inp => {
+    const k = inp.dataset.k;
+    if (dirty[k] || inp === document.activeElement) return;
+    const v = String(b[k] ?? "");
+    if (inp.value !== v) inp.value = v;
+    inp.disabled = !editable || b.status === "building";
+  });
+
+  $("#cue").innerHTML = cueHtml;
+  $("#cover").innerHTML = b.has_cover ? `<img src="/api/books/${b.id}/cover?${coverBust}" alt="Cover">`
+    : `<span>Drop or click<br>to add a cover</span>`;
+
+  const total = b.discs.filter(d => d.status === "ready").reduce((a, d) => a + d.seconds, 0);
+  $("#discList").innerHTML = `<h3><span>Discs</span><span>${b.discs.length} · ${fmt(total)}</span></h3>` + (b.discs.length ? b.discs.map((d, i) => {
+    const pct = d.total_tracks ? Math.round(d.done_tracks / d.total_tracks * 100) : 0;
+    const status = d.status === "ripping" ? `Ripping track ${Math.min(d.done_tracks + 1, d.total_tracks)} of ${d.total_tracks}`
+      : d.status === "error" ? esc(d.error) : `${d.total_tracks} tracks · ${fmt(d.seconds)}`;
+    return `<div class="disc ${d.status}">
+      <div class="n">${i + 1}</div>
+      <div><div class="title">Disc ${i + 1}</div><div class="meta">${status}</div>
+        ${d.status === "ripping" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}</div>
+      <div>${editable ? `
+        <button class="btn small ghost" title="Move up" onclick="moveDisc('${d.id}',-1)" ${i===0?"disabled":""}>↑</button>
+        <button class="btn small ghost" title="Move down" onclick="moveDisc('${d.id}',1)" ${i===b.discs.length-1?"disabled":""}>↓</button>
+        <button class="btn small ghost danger" title="Remove this disc" onclick="delDisc('${d.id}')">✕</button>` : ""}</div>
+    </div>`;
+  }).join("") : `<div class="empty">No discs yet${isActive ? " — the next disc you insert lands here." : "."}</div>`);
+
+  let finishHtml = "";
+  if (b.status === "collecting") {
+    finishHtml = `${!isActive ? `<button class="btn" onclick="activate('${b.id}')">Add more discs</button> ` : ""}
+      <button class="btn primary" onclick="finish('${b.id}')" ${anyRipping || !b.discs.length ? "disabled" : ""}>Finish book →</button>`;
+  } else if (b.status === "queued") finishHtml = `<span class="tag queued">Queued</span> <button class="btn small" onclick="activate('${b.id}')">Add more discs</button>`;
+  else if (b.status === "building") finishHtml = `<div style="min-width:200px"><span class="tag building">Building ${b.progress}%</span><div class="bar"><i style="width:${b.progress}%"></i></div></div>`;
+  else if (b.status === "failed") finishHtml = `<button class="btn" onclick="activate('${b.id}')">Add more discs</button> <button class="btn primary" onclick="finish('${b.id}')">Retry build</button>`;
+  else if (b.status === "done") finishHtml = b.rips_deleted ? `<span class="tag done">In library</span>` : `<button class="btn primary" onclick="finish('${b.id}')">Rebuild</button>`;
+  $("#finishArea").innerHTML = finishHtml + `<div class="path" style="margin-top:6px;text-align:right">→ ${esc(b.status === "done" ? b.output : b.output_preview)}</div>`;
+}
+
+function field(k, label, w) {
+  return `<div class="f ${w}"><label for="f_${k}">${label}</label><input id="f_${k}" data-k="${k}" autocomplete="off"></div>`;
+}
+
+function queueSave(inp) {
+  dirty[inp.dataset.k] = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 500);
+}
+async function saveNow() {
+  const b = book(viewing); if (!b) return;
+  const body = {};
+  document.querySelectorAll("#current [data-k]").forEach(i => { if (dirty[i.dataset.k]) body[i.dataset.k] = i.value; });
+  if (!Object.keys(body).length) return;
+  try { await api("PATCH", `/api/books/${b.id}`, body); for (const k in body) delete dirty[k]; refresh(); }
+  catch (e) { toast(e.message); }
+}
+
+async function act(fn) { try { await fn(); await refresh(); } catch (e) { toast(e.message); } }
+const view = id => { viewing = id; render(); window.scrollTo({top:0, behavior:"smooth"}); };
+const activate = id => act(async () => { await api("POST", `/api/books/${id}/activate`); viewing = id; });
+const finish = id => act(async () => { await saveNow(); await api("POST", `/api/books/${id}/finish`); toast("Queued for building"); });
+const moveDisc = (did, step) => act(() => api("POST", `/api/books/${viewing}/discs/${did}/move`, {step}));
+const delDisc = did => confirm("Remove this disc from the book? You can rip it again afterwards.") && act(() => api("DELETE", `/api/books/${viewing}/discs/${did}`));
+const delBook = id => {
+  const b = book(id);
+  const msg = b.status === "done" ? "Remove this book from the list? The audiobook in your library is kept." : "Delete this book and its ripped discs?";
+  confirm(msg) && act(async () => { await api("DELETE", `/api/books/${id}`); if (viewing === id) viewing = null; });
+};
+const ejectDrive = dev => act(() => api("POST", "/api/drives/eject", {device: dev}));
+const demoInsert = () => act(() => api("POST", "/api/demo/insert"));
+$("#newBookBtn").onclick = () => act(async () => { const b = await api("POST", "/api/books", {}); viewing = b.id; });
+
+// cover upload: click or drag onto the cover
+$("#coverFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (f) uploadCover(f);
+};
+async function uploadCover(f) {
+  const fd = new FormData(); fd.append("file", f);
+  await act(async () => { await api("POST", `/api/books/${viewing}/cover`, fd); coverBust = Date.now(); });
+}
+document.addEventListener("dragover", e => { if (e.target.closest && e.target.closest("#cover")) e.preventDefault(); });
+document.addEventListener("drop", e => {
+  if (!(e.target.closest && e.target.closest("#cover"))) return;
+  e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) uploadCover(f);
+});
+
+// ---- lookup ----
+function openLookup() {
+  const b = book(viewing);
+  $("#q").value = [b.title, b.author].filter(Boolean).join(" ");
+  $("#results").innerHTML = `<p class="muted">Search Audible and Apple Books. Matching the running time helps you spot abridged editions.</p>`;
+  $("#lookup").showModal();
+  if ($("#q").value) search();
+  else $("#q").focus();
+}
+$("#closeLookup").onclick = () => $("#lookup").close();
+$("#lookupForm").onsubmit = e => { e.preventDefault(); search(); };
+let lastResults = [];
+async function search() {
+  const q = $("#q").value.trim(); if (!q) return;
+  $("#results").innerHTML = `<p class="muted">Searching…</p>`;
+  try {
+    const r = await api("GET", "/api/search?q=" + encodeURIComponent(q));
+    lastResults = r.results;
+    const ripped = book(viewing).seconds / 60;
+    $("#results").innerHTML = (r.errors.length ? `<p class="err">${esc(r.errors.join(" · "))}</p>` : "") +
+      (r.results.length ? r.results.map((x, i) => {
+        let rt = "";
+        if (x.minutes) {
+          const diff = ripped ? Math.abs(x.minutes - ripped) / x.minutes : null;
+          rt = ` · ${fmt(x.minutes * 60)}` + (diff !== null && ripped > 30
+            ? ` <span class="${diff < .05 ? "match" : "mismatch"}">(${diff < .05 ? "matches your discs" : "ripped " + fmt(ripped*60)})</span>` : "");
+        }
+        return `<div class="res">
+          ${x.cover_url ? `<img src="${esc(x.cover_url)}" alt="" loading="lazy">` : `<div></div>`}
+          <div><div class="src">${esc(x.source)}</div><div class="t">${esc(x.title)}</div>
+            <div class="m">${esc(x.author)}${x.narrator ? " · read by " + esc(x.narrator) : ""}${x.series ? ` · ${esc(x.series)}${x.series_seq ? " #" + esc(x.series_seq) : ""}` : ""}${x.year ? " · " + esc(x.year) : ""}${rt}</div>
+            <div class="d">${esc(x.description)}</div></div>
+          <button class="btn small primary" onclick="useResult(${i})">Use</button>
+        </div>`;
+      }).join("") : `<p class="muted">Nothing found. Try fewer words, or just the title.</p>`);
+  } catch (e) { $("#results").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+async function useResult(i) {
+  const x = lastResults[i], b = book(viewing);
+  const body = {};
+  for (const k of ["title","subtitle","author","narrator","series","series_seq","year","publisher","description"])
+    if (x[k]) body[k] = x[k];
+  $("#lookup").close();
+  await act(async () => {
+    await api("PATCH", `/api/books/${b.id}`, body);
+    for (const k in body) delete dirty[k];
+    document.querySelectorAll("#current [data-k]").forEach(inp => { if (k_in(body, inp)) inp.value = body[inp.dataset.k]; });
+    if (x.cover_url) { await api("POST", `/api/books/${b.id}/cover`, {url: x.cover_url}); coverBust = Date.now(); }
+  });
+  toast("Details filled in");
+}
+const k_in = (o, inp) => Object.prototype.hasOwnProperty.call(o, inp.dataset.k);
+
+const style = document.createElement("style");
+style.textContent = "@keyframes spin{to{transform:rotate(360deg)}}";
+document.head.appendChild(style);
+
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
