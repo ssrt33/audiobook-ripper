@@ -31,7 +31,7 @@ PARANOIA_OPTS = os.environ.get("PARANOIA_OPTS", "").split()
 
 # Defaults for new books (changeable per book in the web page).
 DEFAULT_BITRATE = os.environ.get("DEFAULT_BITRATE", "64k")
-DEFAULT_CHANNELS = int(os.environ.get("DEFAULT_CHANNELS", "1"))
+DEFAULT_CHANNELS = int(os.environ.get("DEFAULT_CHANNELS", "2"))
 DEFAULT_CHAPTERS = os.environ.get("DEFAULT_CHAPTERS", "disc")  # disc | track | none
 
 # Folder layout under LIBRARY_DIR. Fields: {author} {series} {series_seq} {title} {year} {narrator}

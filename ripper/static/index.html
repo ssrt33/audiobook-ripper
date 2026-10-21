@@ -110,8 +110,25 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .src{font-size:11px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .match{color:var(--ok)}.mismatch{color:var(--bad)}
 .muted{color:var(--muted)}
-.settings{padding:12px 16px;font-size:13px;color:var(--muted);display:grid;gap:4px}
-.settings b{color:var(--ink);font-weight:600}
+.settings{padding:6px 16px 16px;font-size:13px;color:var(--muted);display:grid;gap:2px}
+.settings .lib{display:flex;flex-direction:column;gap:2px;padding:8px 0 10px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.settings .lib .path{color:var(--ink)}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;cursor:pointer}
+.sw span{display:flex;flex-direction:column}
+.sw b{color:var(--ink);font-weight:600;font-size:14px}
+.sw small{font-size:12px;color:var(--muted)}
+.sw input{position:absolute;opacity:0;pointer-events:none}
+.sw i{flex:none;width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:background .15s}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--panel);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.sw input:checked+i{background:var(--accent)}
+.sw input:checked+i::after{transform:translateX(16px)}
+.sw input:focus-visible+i{outline:2px solid var(--accent);outline-offset:2px}
+.sub-h{font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.settings .f{grid-column:auto}
+.settings .row{display:flex;gap:6px}
+.settings .row input{flex:1;min-width:0}
+.saved{margin-top:10px;font-size:12px}
 </style>
 </head>
 <body>
@@ -209,12 +226,59 @@ function renderDrives() {
 }
 
 function renderSettings() {
-  const s = S.settings;
-  $("#settings").innerHTML = `
-    <div>Library: <b class="path">${esc(s.library)}</b></div>
-    <div>Auto-eject: <b>${s.auto_eject ? "on" : "off"}</b> · Auto-start books: <b>${s.auto_start ? "on" : "off"}</b></div>
-    <div>Keep FLAC rips after build: <b>${s.keep_rips ? "yes" : "no"}</b> · Phone alerts: <b>${s.notify ? "on" : "off"}</b></div>
-    <div class="muted" style="margin-top:4px">Change these with environment variables in the app's YAML.</div>`;
+  const s = S.settings, el = $("#settings");
+  if (!el.dataset.built) {
+    el.dataset.built = "1";
+    const sw = (k, label, hint) => `<label class="sw"><span><b>${label}</b><small>${hint}</small></span>
+      <input type="checkbox" data-s="${k}"><i></i></label>`;
+    const sel = (k, label, opts) => `<div class="f"><label>${label}</label><select data-s="${k}">${
+      opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div>`;
+    el.innerHTML = `
+      <div class="lib">Library <span class="path" id="libPath"></span></div>
+      ${sw("auto_eject", "Auto-eject", "Open the tray when a disc finishes")}
+      ${sw("auto_start", "Auto-start books", "Start a new book when a disc goes in")}
+      ${sw("keep_rips", "Keep rips after build", "Lets you edit and rebuild later (uses ~350 MB a disc)")}
+      <div class="sub-h">New book defaults</div>
+      <div class="grid2">
+        ${sel("channels", "Sound", [["2","Stereo"],["1","Mono"]])}
+        ${sel("bitrate", "Quality", [["48k","48 kbps"],["64k","64 kbps"],["96k","96 kbps"],["128k","128 kbps"]])}
+        ${sel("chapters", "Chapters", [["disc","One per disc"],["track","One per track"],["none","None"]])}
+        ${sel("rip_mode", "Rip mode", [["normal","Normal"],["fast","Fast (clean discs)"],["thorough","Thorough (scratched)"]])}
+        ${sel("audible_region", "Lookup region", ["us","uk","ca","au","de","fr","it","es","in","jp"].map(r => [r, r.toUpperCase()]))}
+      </div>
+      <div class="sub-h">Phone alerts</div>
+      <div class="f"><label>Alert address (for example an ntfy.sh topic link)</label>
+        <div class="row"><input data-s="notify_url" placeholder="Off" autocomplete="off">
+        <button class="btn small" onclick="testAlert()">Test</button></div></div>
+      <div class="muted saved" id="savedNote">Changes save automatically.</div>`;
+    el.querySelectorAll("[data-s]").forEach(inp => {
+      const ev = inp.dataset.s === "notify_url" ? "change" : "input";
+      inp.addEventListener(ev, () => saveSetting(inp));
+    });
+  }
+  $("#libPath").textContent = s.library;
+  el.querySelectorAll("[data-s]").forEach(inp => {
+    if (inp === document.activeElement && inp.type !== "checkbox") return;
+    const v = s[inp.dataset.s];
+    if (inp.type === "checkbox") inp.checked = !!v;
+    else if (inp.value !== String(v ?? "")) inp.value = String(v ?? "");
+  });
+}
+async function saveSetting(inp) {
+  const k = inp.dataset.s;
+  const v = inp.type === "checkbox" ? inp.checked : inp.value;
+  try {
+    S.settings = Object.assign(S.settings, await api("PUT", "/api/settings", {[k]: v}));
+    const n = $("#savedNote"); n.textContent = "Saved."; clearTimeout(n._h);
+    n._h = setTimeout(() => n.textContent = "Changes save automatically.", 2000);
+    render();
+  } catch (e) { toast(e.message); refresh(); }
+}
+async function testAlert() {
+  const inp = document.querySelector('[data-s="notify_url"]');
+  if (inp.value !== (S.settings.notify_url || "")) await saveSetting(inp);
+  try { await api("POST", "/api/settings/test-alert"); toast("Test alert sent"); }
+  catch (e) { toast(e.message); }
 }
 
 function renderLibrary() {
@@ -223,7 +287,7 @@ function renderLibrary() {
     const label = {collecting: b.id === S.active ? "open" : "paused", queued: "queued", building: `building ${b.progress}%`,
                    done: "in library", failed: "failed"}[b.status];
     return `<div class="lib-item">
-      <div class="thumb">${b.has_cover && !b.rips_deleted ? `<img src="/api/books/${b.id}/cover?${coverBust}" alt="">` : ""}</div>
+      <div class="thumb">${b.has_cover ? `<img src="/api/books/${b.id}/cover?${coverBust}" alt="">` : ""}</div>
       <div>
         <div class="t">${esc(b.title || "Untitled book")}</div>
         <div class="a">${esc(b.author || "Unknown author")} · ${b.discs.length} disc${b.discs.length===1?"":"s"} · ${fmt(b.seconds)}</div>

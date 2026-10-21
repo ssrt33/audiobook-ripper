@@ -5,7 +5,8 @@ import shutil
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from . import builder, config, drive, metadata, store
+from . import builder, config, drive, metadata, settings, store
+from .util import notify
 
 app = Flask(__name__, static_folder=None)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -43,11 +44,7 @@ def static_files(p):
 @app.get("/api/state")
 def state():
     s = store.snapshot()
-    s["settings"] = {
-        "library": config.LIBRARY_DIR, "auto_eject": config.AUTO_EJECT, "keep_rips": config.KEEP_RIPS,
-        "auto_start": config.AUTO_START_BOOK, "demo": "demo" in config.DRIVES,
-        "notify": bool(config.NOTIFY_URL),
-    }
+    s["settings"] = dict(settings.current(), library=config.LIBRARY_DIR, demo="demo" in config.DRIVES)
     for b in s["books"]:
         b["output_preview"] = builder.output_path(b)[1]
         b["seconds"] = sum(d["seconds"] for d in b["discs"] if d["status"] == "ready")
@@ -165,10 +162,29 @@ def delete_disc(bid, did):
     return jsonify(b)
 
 
+@app.put("/api/settings")
+def put_settings():
+    try:
+        return jsonify(settings.update(request.json or {}))
+    except ValueError as e:
+        return err(str(e))
+
+
+@app.post("/api/settings/test-alert")
+def test_alert():
+    if not config.NOTIFY_URL:
+        return err("Enter an alert address first")
+    notify("Audiobook Ripper", "Test alert: phone alerts are working.")
+    return jsonify({"ok": True})
+
+
 @app.get("/api/books/<bid>/cover")
 def get_cover(bid):
-    get_book(bid)
+    b = get_book(bid)
     p = builder.cover_path(bid)
+    if not os.path.exists(p) and b.get("output"):
+        # rips (and the working cover) are deleted after a build; use the copy next to the book
+        p = os.path.join(os.path.dirname(b["output"]), "cover.jpg")
     if not os.path.exists(p):
         raise LookupError
     resp = send_file(p, mimetype="image/jpeg")
@@ -246,6 +262,7 @@ def main():
     for d in (config.WORK_DIR, config.LIBRARY_DIR, config.CONFIG_DIR):
         os.makedirs(d, exist_ok=True)
     store.init()
+    settings.init()
     drive.start()
     builder.worker.start()
     from waitress import serve

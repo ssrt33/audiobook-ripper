@@ -68,28 +68,39 @@ Clone the repo, replace `image:` with `build: .` in your compose file, and run
 
 ## Settings
 
-All set as environment variables in the YAML.
+### In the web page
+
+The **Settings** panel has switches and menus for everything you'd change day to day. Changes
+save straight away to `/config/settings.json` and survive restarts and updates.
+
+- **Auto-eject**: open the tray when a disc finishes.
+- **Auto-start books**: start a new book when a disc goes in and none is open.
+- **Keep rips after build**: keep the FLAC rips so you can edit details and rebuild (about 350 MB a disc).
+- **New book defaults**: sound (stereo or mono), quality (48–128 kbps), chapters (per disc, per track
+  or none), rip mode (normal, fast for clean discs, thorough for scratched ones) and the Audible
+  lookup region. Each book can still be changed on its own before you press Finish.
+- **Phone alerts**: an address that gets a plain-text message on "disc done, insert the next one" and
+  "book ready". An [ntfy](https://ntfy.sh) topic link works out of the box. Use **Test** to check it.
+
+### In the YAML
+
+Paths, drives and file ownership stay in the YAML.
 
 | Variable | Default | What it does |
 |---|---|---|
 | `DRIVES` | `/dev/sr0` | Drives to watch, comma separated. Add `demo` for a fake drive to try the app without CDs. |
-| `AUTO_EJECT` | `true` | Eject when a disc finishes. |
-| `AUTO_START_BOOK` | `true` | Start a new book on its own when a disc goes in and none is open. |
-| `KEEP_RIPS` | `false` | Keep the FLAC rips after building so you can change details and rebuild. |
-| `PARANOIA_OPTS` | *(empty)* | Extra cdparanoia flags. `-Y` is faster on clean discs; `-z` never gives up on scratches (slow). |
-| `DEFAULT_BITRATE` | `64k` | AAC bitrate for new books (48k–128k, changeable per book). |
-| `DEFAULT_CHANNELS` | `1` | `1` mono (best for speech), `2` stereo. |
-| `DEFAULT_CHAPTERS` | `disc` | `disc`, `track` (one per CD track) or `none`. |
 | `FOLDER_TEMPLATE` | `{author}/{series}/{series_seq_title}` | Library layout. Fields: `author series series_seq title series_seq_title year narrator`. Empty parts are dropped. |
-| `AUDIBLE_REGION` | `us` | `us uk ca au de fr it es in jp` |
-| `NOTIFY_URL` | *(off)* | Plain-text POST on "disc done, insert the next one" and "book ready". An [ntfy](https://ntfy.sh) topic URL works out of the box, so your phone buzzes when it's time to swap discs. |
 | `PUID` / `PGID` | `568` | Owner of files it writes. |
+
+The page settings can also be given starting values in the YAML (`AUTO_EJECT`, `AUTO_START_BOOK`,
+`KEEP_RIPS`, `DEFAULT_CHANNELS` (default `2`, stereo), `DEFAULT_BITRATE`, `DEFAULT_CHAPTERS`,
+`PARANOIA_OPTS`, `AUDIBLE_REGION`, `NOTIFY_URL`). Once something is saved from the page, the page wins.
 
 ## Disk space
 
 Rips are kept as FLAC until the book is built: roughly 300–400 MB per disc. A 15-disc
 book needs about 6 GB in the work dataset while you're ripping. The finished M4B at 64 kbps
-mono is about 30 MB per hour.
+mono is about 30 MB per hour (stereo at the same bitrate is the same size; raise the bitrate for better stereo).
 
 ## Troubleshooting
 

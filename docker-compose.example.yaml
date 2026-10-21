@@ -20,7 +20,7 @@ services:
       AUTO_START_BOOK: "true"
       KEEP_RIPS: "false"
       DEFAULT_BITRATE: 64k
-      DEFAULT_CHANNELS: "1"
+      DEFAULT_CHANNELS: "2"
       DEFAULT_CHAPTERS: disc
       AUDIBLE_REGION: us
       # NOTIFY_URL: https://ntfy.sh/pick-a-long-random-topic-name
