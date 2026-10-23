@@ -30,6 +30,9 @@ KEEP_RIPS = _bool("KEEP_RIPS", False)
 # "-z" = never give up on scratches (can be very slow).
 PARANOIA_OPTS = os.environ.get("PARANOIA_OPTS", "").split()
 
+# Give up on a track that has made no progress for this many minutes (0 = never give up).
+STUCK_LIMIT = int(os.environ.get("STUCK_LIMIT", "0"))
+
 # Defaults for new books (changeable per book in the web page).
 DEFAULT_BITRATE = os.environ.get("DEFAULT_BITRATE", "128k")
 DEFAULT_CHANNELS = int(os.environ.get("DEFAULT_CHANNELS", "2"))

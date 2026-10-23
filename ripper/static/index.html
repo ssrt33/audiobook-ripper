@@ -65,6 +65,11 @@ aside{display:grid;gap:24px}
 .cue .sub{color:var(--muted);font-size:14px;margin-top:4px}
 .cue .disc-ico{flex:none;filter:drop-shadow(0 6px 18px rgba(0,0,0,.5))}
 .cue .bar{height:7px;margin-top:12px}
+.cue.stuck{background:radial-gradient(600px 180px at 0 0,rgba(240,170,80,.22),transparent 70%),linear-gradient(180deg,rgba(240,170,80,.08),transparent)}
+.cue.stuck .big{color:#f5b860}
+.cue.stuck .bar i{background:#e0a24a}
+.cue .info{font-size:13px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
+.cue-actions{margin-top:12px}
 
 /* book editor */
 .book{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:24px}
@@ -322,6 +327,7 @@ function renderSettings() {
         ${sel("bitrate", "Quality", [["48k","48 kbps"],["64k","64 kbps"],["96k","96 kbps"],["128k","128 kbps"]])}
         ${sel("chapters", "Chapters", [["disc","One per disc"],["track","One per track"],["none","None"]])}
         ${sel("rip_mode", "Rip mode", [["normal","Normal"],["fast","Fast (clean discs)"],["thorough","Thorough (scratched)"]])}
+        ${sel("stuck_limit", "Give up on a stuck track", [["0","Never (just warn me)"],["5","After 5 minutes"],["10","After 10 minutes"],["20","After 20 minutes"],["30","After 30 minutes"]])}
         ${sel("audible_region", "Lookup region", ["us","uk","ca","au","de","fr","it","es","in","jp"].map(r => [r, r.toUpperCase()]))}
       </div>
       <div class="sub-h">Phone alerts</div>
@@ -387,8 +393,19 @@ function renderLibrary() {
 function cueFor(b) {
   const ripping = S.drives.find(d => d.state === "ripping");
   if (ripping) {
-    const pct = ripping.tracks ? Math.round(ripping.track / ripping.tracks * 100) : 0;
-    return {cls:"busy", big: ripping.message, sub: `Ripping on ${ripping.device}. Keep this page open for a chime when it's done.`, pct};
+    const tp = ripping.track_pct || 0;
+    const pct = ripping.tracks ? Math.min(100, (ripping.track + tp) / ripping.tracks * 100) : 0;
+    const dur = s => s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`;
+    const info = ripping.elapsed
+      ? `This track: ${Math.round(tp * 100)}% · ${dur(ripping.elapsed)}${ripping.speed ? ` · ${ripping.speed}× speed` : ""}`
+      : "";
+    if (ripping.stuck) {
+      return {cls:"stuck", big: ripping.message, pct, info,
+        sub: `No progress for ${dur(ripping.stalled)}. The disc is probably scratched or dirty and the drive is re-reading the same spot. ` +
+             `It may still get past it on its own${S.settings.stuck_limit ? `; the app gives up after ${S.settings.stuck_limit} minutes` : ""}.`,
+        action: `<button class="btn" onclick="giveUp('${esc(ripping.device)}')">Give up on this disc</button>`};
+    }
+    return {cls:"busy", big: ripping.message, info, sub: `Ripping on ${ripping.device}. Keep this page open for a chime when it's done.`, pct};
   }
   const waiting = S.drives.find(d => d.state === "waiting");
   if (waiting) return {cls:"", big:"Disc waiting", sub:"Start a book below and it will rip straight away."};
@@ -404,7 +421,7 @@ function renderCurrent() {
   const cue = (!b || b.id === S.active || b.status === "collecting") ? cueFor(b && b.id === S.active ? b : (b && b.status==="collecting" ? b : null)) : null;
 
   const cueKey = cue ? cue.big : "";
-  if (lastCue && cueKey !== lastCue && /^Insert disc/.test(cueKey) && /^Disc \d+: track/.test(lastCue)) chime();
+  if (lastCue && cueKey !== lastCue && /^Insert disc/.test(cueKey) && /^Disc \d+: (track|stuck)/.test(lastCue)) chime();
   lastCue = cueKey;
   document.title = cue ? `${cue.big} · Audiobook Ripper` : "Audiobook Ripper";
 
@@ -416,7 +433,9 @@ function renderCurrent() {
         <circle cx="16" cy="16" r="11" fill="none" stroke="#fff" stroke-opacity=".05"/><circle cx="16" cy="16" r="5.5" fill="#1d2129" stroke="#fff" stroke-opacity=".1"/>
         <circle cx="16" cy="16" r="2.2" fill="var(--bg)"/></svg>
       <div style="flex:1;min-width:0"><div class="big">${esc(cue.big)}</div><div class="sub">${esc(cue.sub)}</div>
-      ${cue.pct !== undefined ? `<div class="bar"><i style="width:${cue.pct}%"></i></div>` : ""}</div></div>` : "";
+      ${cue.pct !== undefined ? `<div class="bar"><i style="width:${cue.pct}%"></i></div>` : ""}
+      ${cue.info ? `<div class="info">${esc(cue.info)}</div>` : ""}
+      ${cue.action ? `<div class="cue-actions">${cue.action}</div>` : ""}</div></div>` : "";
 
   if (!b) {
     el.innerHTML = cueHtml + `<div style="padding:18px"><div class="empty">No book open. ${S.settings.auto_start ? "Insert a disc, or" : ""} press <b>+ New book</b> to set up the details first.</div></div>`;
@@ -535,6 +554,7 @@ const delBook = id => {
   const msg = b.status === "done" ? "Remove this book from the list? The audiobook in your library is kept." : "Delete this book and its ripped discs?";
   confirm(msg) && act(async () => { await api("DELETE", `/api/books/${id}`); if (viewing === id) viewing = null; });
 };
+const giveUp = dev => confirm("Stop ripping this disc? It will be marked as failed and ejected. Clean it and put it back in to try again.") && act(async () => { await api("POST", "/api/drives/give-up", {device: dev}); toast("Stopping…"); });
 const ejectDrive = dev => act(() => api("POST", "/api/drives/eject", {device: dev}));
 const demoInsert = () => act(() => api("POST", "/api/demo/insert"));
 $("#newBookBtn").onclick = () => act(async () => { const b = await api("POST", "/api/books", {}); viewing = b.id; });

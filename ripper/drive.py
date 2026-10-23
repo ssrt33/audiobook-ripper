@@ -4,7 +4,10 @@ import glob
 import hashlib
 import os
 import re
+import shlex
 import shutil
+import subprocess
+import sys
 import threading
 import time
 
@@ -20,6 +23,9 @@ CDS_NO_INFO, CDS_NO_DISC, CDS_TRAY_OPEN, CDS_DRIVE_NOT_READY, CDS_DISC_OK = 0, 1
 CDS_AUDIO, CDS_MIXED = 100, 105
 
 SECTORS_PER_SEC = 75.0
+BYTES_PER_SECTOR = 2352
+# Seconds without any new audio before a track is shown as stuck (and a phone alert is sent).
+STALL_WARN = int(os.environ.get("STALL_WARN", "120"))
 
 # Discs the user removed from a book mid-rip; the ripper checks this between tracks.
 cancelled = set()
@@ -32,6 +38,7 @@ class Watcher(threading.Thread):
         self.auto = auto          # found by auto-detect: forget it if it goes away for good
         self.stopped = False
         self.missing_since = None
+        self.abort = None         # set to a reason to stop the current rip right away
         self.handled = False  # we've already dealt with the disc currently in the tray
         store.set_drive(dev, state="starting", message="")
 
@@ -66,7 +73,10 @@ class Watcher(threading.Thread):
 
     def read_toc(self):
         """Return list of (track_no, sectors) for the audio tracks on the disc."""
-        r = run(["cdparanoia", "-d", self.dev, "-Q"])
+        try:
+            r = run(["cdparanoia", "-d", self.dev, "-Q"], timeout=180)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("The drive took more than 3 minutes to read the track list")
         tracks = []
         for line in (r.stderr + r.stdout).splitlines():
             m = re.match(r"^\s+(\d+)\.\s+(\d+)\s+\[[^\]]*\]\s+(\d+)", line)
@@ -76,10 +86,61 @@ class Watcher(threading.Thread):
             raise RuntimeError("Couldn't read the track list: " + (r.stderr.strip().splitlines() or ["no output"])[-1])
         return tracks
 
-    def rip_track(self, n, wav):
-        r = run(["cdparanoia", "-d", self.dev, *config.PARANOIA_OPTS, "-q", str(n), wav])
-        if r.returncode != 0 or not os.path.exists(wav):
-            raise RuntimeError(f"Track {n} failed to rip: {(r.stderr.strip().splitlines() or ['unknown error'])[-1]}")
+    def track_cmd(self, n, wav):
+        return ["cdparanoia", "-d", self.dev, *config.PARANOIA_OPTS, "-q", str(n), wav]
+
+    def rip_track(self, n, wav, sectors, status):
+        """Rip one track while watching the file grow. `status(**fields)` updates the page.
+
+        A track counts as stuck when no new audio has been written for STALL_WARN seconds,
+        which on a scratched disc means cdparanoia is re-reading the same spot over and over.
+        """
+        expected = sectors * BYTES_PER_SECTOR
+        errlog = wav + ".log"
+        with open(errlog, "w") as ef:
+            p = subprocess.Popen(self.track_cmd(n, wav), stdout=subprocess.DEVNULL, stderr=ef)
+        start = last_growth = time.time()
+        last_size, warned = 0, False
+        try:
+            while p.poll() is None:
+                time.sleep(1)
+                now = time.time()
+                try:
+                    size = max(0, os.path.getsize(wav) - 44)  # minus the WAV header
+                except OSError:
+                    size = 0
+                if size > last_size:
+                    last_size, last_growth = size, now
+                stalled = now - last_growth
+                speed = (size / BYTES_PER_SECTOR / SECTORS_PER_SEC) / max(now - start, 1)
+                stuck = stalled >= STALL_WARN
+                status(track_pct=min(size / expected, 1.0) if expected else 0, speed=round(speed, 1),
+                       elapsed=int(now - start), stalled=int(stalled) if stuck else 0, stuck=stuck)
+                if stuck and not warned:
+                    warned = True
+                    log.warning("track %d stuck: no progress for %ds at %d%%", n, stalled, size * 100 // max(expected, 1))
+                    status(notify=True)
+                if self.abort:
+                    raise RuntimeError(self.abort)
+                limit = config.STUCK_LIMIT * 60
+                if limit and stalled >= limit:
+                    raise RuntimeError(f"Track {n} was stuck for {config.STUCK_LIMIT} minutes, so the app gave up. "
+                                       "Clean the disc and put it back in.")
+        finally:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+        try:
+            with open(errlog) as ef:
+                err = ef.read().strip().splitlines()
+            os.remove(errlog)
+        except OSError:
+            err = []
+        if p.returncode != 0 or not os.path.exists(wav):
+            raise RuntimeError(f"Track {n} failed to rip: {(err or ['unknown error'])[-1]}")
+        took = time.time() - start
+        log.info("track %d ripped in %dm%02ds (%.1fx)%s", n, took // 60, took % 60,
+                 sectors / SECTORS_PER_SEC / max(took, 1), " after being stuck" if warned else "")
 
     # ---- main loop ----
     def run(self):
@@ -171,15 +232,30 @@ class Watcher(threading.Thread):
         makedirs(ddir)
         log.info("ripping disc %d of %s (%d tracks) on %s", num, book["id"], len(toc), self.dev)
 
+        self.abort = None
+        title = book["title"] or "your book"
         try:
             for i, (n, sectors, _) in enumerate(toc):
                 if disc["id"] in cancelled:
                     raise RuntimeError("cancelled")
-                store.set_drive(self.dev, state="ripping", message=f"Disc {num}: track {i + 1} of {len(toc)}",
-                                book=book["id"], disc=disc["id"], track=i, tracks=len(toc))
+                label = f"Disc {num}: track {i + 1} of {len(toc)}"
+                store.set_drive(self.dev, state="ripping", message=label, book=book["id"], disc=disc["id"],
+                                track=i, tracks=len(toc), track_pct=0, speed=0, elapsed=0, stalled=0, stuck=False)
+
+                def status(**kw):
+                    if disc["id"] in cancelled:
+                        self.abort = "cancelled"
+                    if kw.pop("notify", False):
+                        notify("Rip looks stuck",
+                               f"Disc {num} of {title}, track {i + 1}: no progress for {STALL_WARN // 60}+ minutes. "
+                               "The disc may be scratched. Open the ripper page to give up on it, or wait.")
+                        return
+                    stuck = kw.get("stuck")
+                    store.set_drive(self.dev, message=(f"Disc {num}: stuck on track {i + 1} of {len(toc)}" if stuck else label), **kw)
+
                 wav = os.path.join(ddir, f"t{n:02d}.wav")
                 flac = os.path.join(ddir, f"t{n:02d}.flac")
-                self.rip_track(n, wav)
+                self.rip_track(n, wav, sectors, status)
                 to_flac(wav, flac)
                 with store.lock():
                     disc["tracks"].append({"n": n, "file": os.path.basename(flac), "seconds": sectors / SECTORS_PER_SEC})
@@ -197,8 +273,9 @@ class Watcher(threading.Thread):
                     disc["status"] = "error"
                     disc["error"] = str(e)
                     store.save()
-                store.set_drive(self.dev, state="idle", message=f"Disc {num} failed — clean it and put it back in")
-                notify("Disc failed", f"Disc {num} of {book['title'] or 'your book'} failed: {e}")
+                store.set_drive(self.dev, state="idle", message=f"Disc {num} failed — clean it and put it back in",
+                                stuck=False, stalled=0)
+                notify("Disc failed", f"Disc {num} of {title} failed: {e}")
             self.eject()
             return
 
@@ -253,14 +330,15 @@ class DemoWatcher(Watcher):
         fp = hashlib.sha1(f"demo{k}".encode()).hexdigest()[:16]
         self.rip(book, toc, fp)
 
-    def rip_track(self, n, wav):
+    def track_cmd(self, n, wav):
         freq = 220 + 110 * ((self.pending or 1) % 4) + 20 * n
         secs = next(s for t, s, _ in self._toc if t == n) / SECTORS_PER_SEC
-        r = run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
-                 f"sine=frequency={freq}:duration={secs}", "-ac", "2", "-ar", "44100", wav])
-        if r.returncode != 0:
-            raise RuntimeError(r.stderr)
-        time.sleep(0.3)
+        tmp = wav + ".gen.wav"
+        stuck = "1" if (os.environ.get("DEMO_STUCK") and n == 2) else "0"
+        gen = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
+               f"sine=frequency={freq}:duration={secs}", "-ac", "2", "-ar", "44100", tmp]
+        write = [sys.executable, "-m", "ripper.demo_writer", tmp, wav, stuck]
+        return ["sh", "-c", " ".join(map(shlex.quote, gen)) + " && exec " + " ".join(map(shlex.quote, write))]
 
     def rip(self, book, toc, fp):
         self._toc = toc

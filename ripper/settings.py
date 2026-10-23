@@ -12,6 +12,7 @@ from . import config
 RIP_MODES = {"normal": [], "fast": ["-Y"], "thorough": ["-z"]}
 BITRATES = ["48k", "64k", "96k", "128k"]
 CHAPTERS = ["disc", "track", "none"]
+STUCK_LIMITS = [0, 5, 10, 20, 30]
 REGIONS = ["us", "uk", "ca", "au", "de", "fr", "it", "es", "in", "jp"]
 
 _lock = threading.Lock()
@@ -34,6 +35,7 @@ def current():
         "channels": config.DEFAULT_CHANNELS,
         "chapters": config.DEFAULT_CHAPTERS,
         "rip_mode": _rip_mode_from_opts(config.PARANOIA_OPTS),
+        "stuck_limit": config.STUCK_LIMIT,
         "audible_region": config.AUDIBLE_REGION,
         "notify_url": config.NOTIFY_URL,
     }
@@ -56,6 +58,8 @@ def _apply(data):
         config.DEFAULT_CHAPTERS = data["chapters"]; changed.append("chapters")
     if data.get("rip_mode") in RIP_MODES:
         config.PARANOIA_OPTS = list(RIP_MODES[data["rip_mode"]]); changed.append("rip_mode")
+    if "stuck_limit" in data and str(data["stuck_limit"]).isdigit() and int(data["stuck_limit"]) in STUCK_LIMITS:
+        config.STUCK_LIMIT = int(data["stuck_limit"]); changed.append("stuck_limit")
     if data.get("audible_region") in REGIONS:
         config.AUDIBLE_REGION = data["audible_region"]; changed.append("audible_region")
     if "notify_url" in data:

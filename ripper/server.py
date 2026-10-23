@@ -249,6 +249,21 @@ def eject():
     return jsonify({"ok": True})
 
 
+@app.post("/api/drives/give-up")
+def give_up():
+    """Stop the disc that's ripping on a drive right now; it's marked failed and ejected."""
+    dev = (request.json or {}).get("device")
+    w = drive.watchers.get(dev)
+    if not w:
+        raise LookupError
+    d = next((x for x in store.drives() if x["device"] == dev), {})
+    if d.get("state") != "ripping":
+        return err("Nothing is ripping on that drive")
+    w.abort = (f"You gave up on track {d.get('track', 0) + 1} because it was stuck. "
+               "Clean the disc and put it back in to try again.")
+    return jsonify({"ok": True})
+
+
 @app.post("/api/demo/insert")
 def demo_insert():
     w = drive.watchers.get("demo")

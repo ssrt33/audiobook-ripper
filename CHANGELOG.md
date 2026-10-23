@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0 — 2026-10-22
+
+### Added
+- **See when a rip is stuck.** The banner now shows progress inside the current track, how long
+  it's been on that track and the ripping speed (for example `This track: 63% · 2m 10s · 4.1× speed`),
+  and the progress bar moves smoothly instead of jumping a track at a time.
+- **Stuck warning.** If a track writes no new audio for 2 minutes, the banner turns amber with
+  "Disc 9: stuck on track 9 of 17", how long it's been stuck, and what that usually means
+  (a scratched or dirty disc being re-read). A phone alert goes out too, if alerts are on.
+- **Give up on this disc** button on the stuck banner. It stops the rip straight away, marks the
+  disc as failed and ejects it, so you can clean it and put it back in (it re-rips into the same slot).
+- **"Give up on a stuck track" setting**: never (just warn, the default), or after 5, 10, 20 or
+  30 minutes with no progress.
+- **Per-track log lines**, like `track 9 ripped in 4m12s (3.1x)`, and a warning line when a track
+  gets stuck, so the log shows exactly where time went.
+
+### Fixed
+- Removing a disc while it's ripping now stops it immediately instead of after the current track.
+- Reading the track list gives up after 3 minutes instead of waiting forever on a bad disc.
+
 ## 1.3.0 — 2026-10-21
 
 ### Fixed

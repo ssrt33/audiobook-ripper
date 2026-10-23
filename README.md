@@ -130,6 +130,26 @@ If the test doesn't arrive, check the app's notification permission, then look a
 a `notify failed` line (the NAS may not be able to reach ntfy.sh). Any service that accepts a
 plain-text POST works too, including a self-hosted ntfy server.
 
+## Is it stuck?
+
+While a disc rips, the banner shows how far into the current track it is, how long it's been on
+that track and the ripping speed. A clean disc usually rips at 4–10× speed, so a track takes a
+minute or two.
+
+If a track writes no new audio for 2 minutes, the banner turns amber and says which track is
+stuck and for how long, and you get a phone alert if alerts are on. That almost always means a
+scratch or smudge that the drive keeps re-reading. Your options:
+
+- **Wait.** Many discs get past the bad spot on their own after a few minutes.
+- **Press "Give up on this disc".** The rip stops, the disc is marked failed and ejected. Clean it
+  (wipe from the centre outwards) and put it back in; it re-rips into the same slot.
+- **Let the app decide.** In Settings, set **Give up on a stuck track** to 5–30 minutes.
+- **For badly scratched discs**, set **Rip mode** to *Thorough* before re-inserting. It's slower but
+  tries harder. *Fast* is the opposite: quicker on clean discs, less careful on damaged ones.
+
+The log also shows each track's time and speed (`track 9 ripped in 4m12s (3.1x)`) and a warning
+when one gets stuck.
+
 ## Disk space
 
 Rips are kept as FLAC until the book is built: roughly 300–400 MB per disc. A 15-disc
