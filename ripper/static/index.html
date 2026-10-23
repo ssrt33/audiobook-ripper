@@ -69,7 +69,8 @@ aside{display:grid;gap:24px}
 .cue.stuck .big{color:#f5b860}
 .cue.stuck .bar i{background:#e0a24a}
 .cue .info{font-size:13px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
-.cue-actions{margin-top:12px}
+.cue-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.skipnote{color:#f5b860}
 
 /* book editor */
 .book{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:24px}
@@ -327,7 +328,8 @@ function renderSettings() {
         ${sel("bitrate", "Quality", [["48k","48 kbps"],["64k","64 kbps"],["96k","96 kbps"],["128k","128 kbps"]])}
         ${sel("chapters", "Chapters", [["disc","One per disc"],["track","One per track"],["none","None"]])}
         ${sel("rip_mode", "Rip mode", [["normal","Normal"],["fast","Fast (clean discs)"],["thorough","Thorough (scratched)"]])}
-        ${sel("stuck_limit", "Give up on a stuck track", [["0","Never (just warn me)"],["5","After 5 minutes"],["10","After 10 minutes"],["20","After 20 minutes"],["30","After 30 minutes"]])}
+        ${sel("stuck_limit", "When a track is stuck", [["0","Just warn me"],["5","Act after 5 minutes"],["10","Act after 10 minutes"],["20","Act after 20 minutes"],["30","Act after 30 minutes"]])}
+        ${sel("stuck_action", "What to do then", [["give_up","Give up on the disc"],["skip","Skip the bad spot and keep going"]])}
         ${sel("audible_region", "Lookup region", ["us","uk","ca","au","de","fr","it","es","in","jp"].map(r => [r, r.toUpperCase()]))}
       </div>
       <div class="sub-h">Phone alerts</div>
@@ -402,8 +404,10 @@ function cueFor(b) {
     if (ripping.stuck) {
       return {cls:"stuck", big: ripping.message, pct, info,
         sub: `No progress for ${dur(ripping.stalled)}. The disc is probably scratched or dirty and the drive is re-reading the same spot. ` +
-             `It may still get past it on its own${S.settings.stuck_limit ? `; the app gives up after ${S.settings.stuck_limit} minutes` : ""}.`,
-        action: `<button class="btn" onclick="giveUp('${esc(ripping.device)}')">Give up on this disc</button>`};
+             `It may still get past it on its own${S.settings.stuck_limit ? `; the app ${S.settings.stuck_action === "skip" ? "skips the bad spot" : "gives up"} after ${S.settings.stuck_limit} minutes` : ""}. ` +
+             `Skipping keeps everything else and leaves a short silent gap where the bad spot is.`,
+        action: `<button class="btn primary" onclick="skipSpot('${esc(ripping.device)}')">Skip the bad spot</button>
+                 <button class="btn" onclick="giveUp('${esc(ripping.device)}')">Give up on this disc</button>`};
     }
     return {cls:"busy", big: ripping.message, info, sub: `Ripping on ${ripping.device}. Keep this page open for a chime when it's done.`, pct};
   }
@@ -421,7 +425,7 @@ function renderCurrent() {
   const cue = (!b || b.id === S.active || b.status === "collecting") ? cueFor(b && b.id === S.active ? b : (b && b.status==="collecting" ? b : null)) : null;
 
   const cueKey = cue ? cue.big : "";
-  if (lastCue && cueKey !== lastCue && /^Insert disc/.test(cueKey) && /^Disc \d+: (track|stuck)/.test(lastCue)) chime();
+  if (lastCue && cueKey !== lastCue && /^Insert disc/.test(cueKey) && /^Disc \d+: (track|stuck|skipping)/.test(lastCue)) chime();
   lastCue = cueKey;
   document.title = cue ? `${cue.big} · Audiobook Ripper` : "Audiobook Ripper";
 
@@ -503,9 +507,12 @@ function renderCurrent() {
     const pct = d.total_tracks ? Math.round(d.done_tracks / d.total_tracks * 100) : 0;
     const status = d.status === "ripping" ? `Ripping track ${Math.min(d.done_tracks + 1, d.total_tracks)} of ${d.total_tracks}`
       : d.status === "error" ? esc(d.error) : `${d.total_tracks} tracks · ${fmt(d.seconds)}`;
+    const skips = (d.tracks || []).filter(t => t.gaps && t.gaps.length);
+    const skipNote = skips.length ? `<div class="meta skipnote">⚠ ${skips.map(t => `Track ${t.n}: ${t.gaps.map(g =>
+      `${g.len}s skipped at ${Math.floor(g.at / 60)}:${String(Math.floor(g.at % 60)).padStart(2, "0")}`).join(", ")}`).join(" · ")} (silent gap — listen there)</div>` : "";
     return `<div class="disc ${d.status}">
       <div class="n">${i + 1}</div>
-      <div><div class="title">Disc ${i + 1}</div><div class="meta">${status}</div>
+      <div><div class="title">Disc ${i + 1}</div><div class="meta">${status}</div>${skipNote}
         ${d.status === "ripping" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}</div>
       <div>${editable ? `
         <button class="btn small ghost" title="Move up" onclick="moveDisc('${d.id}',-1)" ${i===0?"disabled":""}>↑</button>
@@ -554,6 +561,7 @@ const delBook = id => {
   const msg = b.status === "done" ? "Remove this book from the list? The audiobook in your library is kept." : "Delete this book and its ripped discs?";
   confirm(msg) && act(async () => { await api("DELETE", `/api/books/${id}`); if (viewing === id) viewing = null; });
 };
+const skipSpot = dev => confirm("Skip the bad spot? The audio ripped so far is kept, a few seconds where the disc can't be read become silence, and the rip carries on. If it gets stuck again right after, press Skip again.") && act(async () => { await api("POST", "/api/drives/skip", {device: dev}); toast("Skipping the bad spot…"); });
 const giveUp = dev => confirm("Stop ripping this disc? It will be marked as failed and ejected. Clean it and put it back in to try again.") && act(async () => { await api("POST", "/api/drives/give-up", {device: dev}); toast("Stopping…"); });
 const ejectDrive = dev => act(() => api("POST", "/api/drives/eject", {device: dev}));
 const demoInsert = () => act(() => api("POST", "/api/demo/insert"));

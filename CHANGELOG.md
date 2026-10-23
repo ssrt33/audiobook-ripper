@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.5.0 — 2026-10-23
+
+### Added
+- **Skip the bad spot** button on the stuck banner. Instead of losing the whole disc to one
+  unreadable patch, the app keeps the audio ripped so far, fills the bad stretch with silence
+  (2 seconds, doubling up to 30 if it's stuck again right after) and carries on ripping the rest
+  of the track and the disc.
+- **Skips are flagged.** The disc row shows each gap, like `Track 9: 2s skipped at 14:05`, the
+  "disc done" alert says how much was skipped and on which track, and the log has a line per skip.
+- **"What to do then" setting** next to the stuck time limit: give up on the disc (as before) or
+  skip the bad spot and keep going, for unattended rips. Also settable with `STUCK_ACTION=skip`.
+
+### Changed
+- The stuck setting is now labelled **When a track is stuck** (just warn me, or act after 5–30
+  minutes), since the action can now be either giving up or skipping.
+
 ## 1.4.0 — 2026-10-22
 
 ### Added

@@ -264,6 +264,20 @@ def give_up():
     return jsonify({"ok": True})
 
 
+@app.post("/api/drives/skip")
+def skip_bad_spot():
+    """Jump over the spot the current track is stuck on: the gap becomes silence and the rip goes on."""
+    dev = (request.json or {}).get("device")
+    w = drive.watchers.get(dev)
+    if not w:
+        raise LookupError
+    d = next((x for x in store.drives() if x["device"] == dev), {})
+    if d.get("state") != "ripping":
+        return err("Nothing is ripping on that drive")
+    w.skip = True
+    return jsonify({"ok": True})
+
+
 @app.post("/api/demo/insert")
 def demo_insert():
     w = drive.watchers.get("demo")

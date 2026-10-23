@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import wave
 
 from . import config, store
 from .util import log, makedirs, chown, notify, run
@@ -27,8 +28,59 @@ BYTES_PER_SECTOR = 2352
 # Seconds without any new audio before a track is shown as stuck (and a phone alert is sent).
 STALL_WARN = int(os.environ.get("STALL_WARN", "120"))
 
+# How much audio to jump over the first time a bad spot is skipped. If the drive is stuck again
+# right after the jump, the next skip doubles, up to SKIP_MAX.
+SKIP_START = 2 * 75   # sectors (2 seconds)
+SKIP_MAX = 30 * 75    # sectors (30 seconds)
+# A new piece that gets stuck with less than this much audio counts as "still in the bad spot".
+SKIP_NEAR = 5 * 75    # sectors
+
 # Discs the user removed from a book mid-rip; the ripper checks this between tracks.
 cancelled = set()
+
+
+def _pcm_start(path):
+    """Byte offset where the audio starts in a WAV file (after the header)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+    except OSError:
+        return 44
+    i = head.find(b"data", 12)
+    return i + 8 if i >= 0 else 44
+
+
+def _sector_span(n, offset):
+    """cdparanoia span for track n starting `offset` sectors in, to the end of the track."""
+    secs, frames = divmod(offset, 75)
+    h, rest = divmod(secs, 3600)
+    m, sec = divmod(rest, 60)
+    return f"{n}[{h}:{m}:{sec}.{frames}]-{n}"
+
+
+def join_pieces(pieces, out):
+    """Write one 44.1 kHz stereo WAV from [(kind, value)] pieces.
+
+    ("file", (path, max_bytes or None)) copies audio from a ripped piece;
+    ("silence", sectors) fills a skipped stretch with silence.
+    """
+    with wave.open(out, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        for kind, val in pieces:
+            if kind == "silence":
+                chunk = bytes(BYTES_PER_SECTOR * 75)
+                left = val * BYTES_PER_SECTOR
+                while left > 0:
+                    w.writeframesraw(chunk[:min(left, len(chunk))])
+                    left -= len(chunk)
+            else:
+                path, limit = val
+                with open(path, "rb") as f:
+                    f.seek(_pcm_start(path))
+                    data = f.read() if limit is None else f.read(limit)
+                w.writeframesraw(data[:len(data) - len(data) % 4])
 
 
 class Watcher(threading.Thread):
@@ -39,6 +91,7 @@ class Watcher(threading.Thread):
         self.stopped = False
         self.missing_since = None
         self.abort = None         # set to a reason to stop the current rip right away
+        self.skip = False         # set to jump over the bad spot in the current track
         self.handled = False  # we've already dealt with the disc currently in the tray
         store.set_drive(dev, state="starting", message="")
 
@@ -86,44 +139,112 @@ class Watcher(threading.Thread):
             raise RuntimeError("Couldn't read the track list: " + (r.stderr.strip().splitlines() or ["no output"])[-1])
         return tracks
 
-    def track_cmd(self, n, wav):
-        return ["cdparanoia", "-d", self.dev, *config.PARANOIA_OPTS, "-q", str(n), wav]
+    def track_cmd(self, n, wav, offset=0):
+        span = _sector_span(n, offset) if offset else str(n)
+        return ["cdparanoia", "-d", self.dev, *config.PARANOIA_OPTS, "-q", "--", span, wav]
 
     def rip_track(self, n, wav, sectors, status):
         """Rip one track while watching the file grow. `status(**fields)` updates the page.
 
         A track counts as stuck when no new audio has been written for STALL_WARN seconds,
         which on a scratched disc means cdparanoia is re-reading the same spot over and over.
+        A stuck track can be skipped past (button on the page, or the "when stuck" setting):
+        the audio ripped so far is kept, the bad stretch becomes silence and the rip carries on
+        just after it. Returns the skipped stretches as [{"at": seconds, "len": seconds}].
+        """
+        start = time.time()
+        self.skip = False
+        offset = 0            # sector the current piece started at
+        pieces, gaps = [], []
+        skip_len = SKIP_START
+        warned = False
+        while True:
+            piece = wav if offset == 0 else f"{wav}.{offset}.part"
+            outcome, good, warned = self._rip_piece(n, piece, offset, sectors, start, status, warned)
+            if outcome == "done":
+                pieces.append(("file", (piece, None)))
+                break
+            # outcome == "skip": keep what we have, jump over the bad spot, rip the rest.
+            if good < SKIP_NEAR and gaps and gaps[-1]["end"] == offset:
+                skip_len = min(skip_len * 2, SKIP_MAX)   # stuck again right after the last jump
+            else:
+                skip_len = SKIP_START
+            bad = offset + good
+            pieces.append(("file", (piece, good * BYTES_PER_SECTOR)))
+            jump = min(skip_len, sectors - bad)
+            pieces.append(("silence", jump))
+            if gaps and gaps[-1]["end"] == bad:
+                gaps[-1]["end"] = bad + jump          # merge with the previous skip
+            else:
+                gaps.append({"start": bad, "end": bad + jump})
+            log.warning("track %d: skipped %.1fs of unreadable audio at %d:%02d", n, jump / SECTORS_PER_SEC,
+                        bad / SECTORS_PER_SEC // 60, bad / SECTORS_PER_SEC % 60)
+            offset = bad + jump
+            if offset >= sectors:
+                break
+        if gaps:
+            tmp = wav + ".joined"
+            join_pieces(pieces, tmp)
+            for kind, val in pieces:
+                if kind == "file" and val[0] != wav:
+                    try:
+                        os.remove(val[0])
+                    except OSError:
+                        pass
+            os.replace(tmp, wav)
+        took = time.time() - start
+        skipped = sum(g["end"] - g["start"] for g in gaps) / SECTORS_PER_SEC
+        log.info("track %d ripped in %dm%02ds (%.1fx)%s", n, took // 60, took % 60,
+                 sectors / SECTORS_PER_SEC / max(took, 1),
+                 f", {skipped:.1f}s skipped" if gaps else (" after being stuck" if warned else ""))
+        return [{"at": round(g["start"] / SECTORS_PER_SEC, 1), "len": round((g["end"] - g["start"]) / SECTORS_PER_SEC, 1)}
+                for g in gaps]
+
+    def _rip_piece(self, n, wav, offset, sectors, start, status, warned):
+        """Run cdparanoia from `offset` to the end of the track.
+
+        Returns (outcome, sectors, warned): ("done", sectors written) or
+        ("skip", whole sectors written before the bad spot), plus whether a stuck alert went out.
         """
         expected = sectors * BYTES_PER_SECTOR
         errlog = wav + ".log"
         with open(errlog, "w") as ef:
-            p = subprocess.Popen(self.track_cmd(n, wav), stdout=subprocess.DEVNULL, stderr=ef)
-        start = last_growth = time.time()
-        last_size, warned = 0, False
+            p = subprocess.Popen(self.track_cmd(n, wav, offset), stdout=subprocess.DEVNULL, stderr=ef)
+        piece_start = last_growth = time.time()
+        last_size = 0
+        outcome = None
         try:
             while p.poll() is None:
                 time.sleep(1)
                 now = time.time()
                 try:
-                    size = max(0, os.path.getsize(wav) - 44)  # minus the WAV header
+                    size = max(0, os.path.getsize(wav) - _pcm_start(wav))
                 except OSError:
                     size = 0
                 if size > last_size:
                     last_size, last_growth = size, now
                 stalled = now - last_growth
-                speed = (size / BYTES_PER_SECTOR / SECTORS_PER_SEC) / max(now - start, 1)
+                done = offset * BYTES_PER_SECTOR + size
+                speed = (done / BYTES_PER_SECTOR / SECTORS_PER_SEC) / max(now - start, 1)
                 stuck = stalled >= STALL_WARN
-                status(track_pct=min(size / expected, 1.0) if expected else 0, speed=round(speed, 1),
+                status(track_pct=min(done / expected, 1.0) if expected else 0, speed=round(speed, 1),
                        elapsed=int(now - start), stalled=int(stalled) if stuck else 0, stuck=stuck)
                 if stuck and not warned:
                     warned = True
-                    log.warning("track %d stuck: no progress for %ds at %d%%", n, stalled, size * 100 // max(expected, 1))
+                    log.warning("track %d stuck: no progress for %ds at %d%%", n, stalled, done * 100 // max(expected, 1))
                     status(notify=True)
                 if self.abort:
                     raise RuntimeError(self.abort)
+                if self.skip:
+                    self.skip = False
+                    outcome = "skip"
+                    break
                 limit = config.STUCK_LIMIT * 60
                 if limit and stalled >= limit:
+                    if config.STUCK_ACTION == "skip":
+                        log.info("track %d stuck for %d minutes: skipping the bad spot", n, config.STUCK_LIMIT)
+                        outcome = "skip"
+                        break
                     raise RuntimeError(f"Track {n} was stuck for {config.STUCK_LIMIT} minutes, so the app gave up. "
                                        "Clean the disc and put it back in.")
         finally:
@@ -136,11 +257,16 @@ class Watcher(threading.Thread):
             os.remove(errlog)
         except OSError:
             err = []
+        if outcome == "skip":
+            status(message_override="skipping", stuck=False, stalled=0)
+            try:
+                size = max(0, os.path.getsize(wav) - _pcm_start(wav))
+            except OSError:
+                size = 0
+            return "skip", min(size // BYTES_PER_SECTOR, sectors - offset), warned
         if p.returncode != 0 or not os.path.exists(wav):
             raise RuntimeError(f"Track {n} failed to rip: {(err or ['unknown error'])[-1]}")
-        took = time.time() - start
-        log.info("track %d ripped in %dm%02ds (%.1fx)%s", n, took // 60, took % 60,
-                 sectors / SECTORS_PER_SEC / max(took, 1), " after being stuck" if warned else "")
+        return "done", sectors - offset, warned
 
     # ---- main loop ----
     def run(self):
@@ -219,7 +345,7 @@ class Watcher(threading.Thread):
                 return
             if existing:  # a failed earlier attempt: rip again in the same slot
                 disc = existing
-                disc.update(status="ripping", error="", tracks=[], done_tracks=0, seconds=0.0, drive=self.dev)
+                disc.update(status="ripping", error="", tracks=[], done_tracks=0, seconds=0.0, drive=self.dev, skipped=0)
             else:
                 disc = store.add_disc(book["id"], fp, self.dev)
             disc["total_tracks"] = len(toc)
@@ -233,6 +359,7 @@ class Watcher(threading.Thread):
         log.info("ripping disc %d of %s (%d tracks) on %s", num, book["id"], len(toc), self.dev)
 
         self.abort = None
+        self.skip = False
         title = book["title"] or "your book"
         try:
             for i, (n, sectors, _) in enumerate(toc):
@@ -250,15 +377,22 @@ class Watcher(threading.Thread):
                                f"Disc {num} of {title}, track {i + 1}: no progress for {STALL_WARN // 60}+ minutes. "
                                "The disc may be scratched. Open the ripper page to give up on it, or wait.")
                         return
+                    if kw.pop("message_override", None) == "skipping":
+                        store.set_drive(self.dev, message=f"Disc {num}: skipping the bad spot in track {i + 1}", **kw)
+                        return
                     stuck = kw.get("stuck")
                     store.set_drive(self.dev, message=(f"Disc {num}: stuck on track {i + 1} of {len(toc)}" if stuck else label), **kw)
 
                 wav = os.path.join(ddir, f"t{n:02d}.wav")
                 flac = os.path.join(ddir, f"t{n:02d}.flac")
-                self.rip_track(n, wav, sectors, status)
+                gaps = self.rip_track(n, wav, sectors, status)
                 to_flac(wav, flac)
                 with store.lock():
-                    disc["tracks"].append({"n": n, "file": os.path.basename(flac), "seconds": sectors / SECTORS_PER_SEC})
+                    t = {"n": n, "file": os.path.basename(flac), "seconds": sectors / SECTORS_PER_SEC}
+                    if gaps:
+                        t["gaps"] = gaps
+                        disc["skipped"] = round(disc.get("skipped", 0) + sum(g["len"] for g in gaps), 1)
+                    disc["tracks"].append(t)
                     disc["done_tracks"] = i + 1
                     disc["seconds"] += sectors / SECTORS_PER_SEC
                     store.save()
@@ -285,7 +419,13 @@ class Watcher(threading.Thread):
             store.save()
         store.set_drive(self.dev, state="idle", message=f"Disc {num} done — insert disc {num + 1}",
                         book=book["id"], disc=None, track=0, tracks=0)
-        notify("Disc done", f"Disc {num} of {book['title'] or 'your book'} is ripped. Insert disc {num + 1}.")
+        if disc.get("skipped"):
+            bad = ", ".join(str(t["n"]) for t in disc["tracks"] if t.get("gaps"))
+            notify("Disc done (with skips)",
+                   f"Disc {num} of {title} is ripped, but {disc['skipped']:g}s of unreadable audio was skipped "
+                   f"(track {bad}). Insert disc {num + 1}.")
+        else:
+            notify("Disc done", f"Disc {num} of {title} is ripped. Insert disc {num + 1}.")
         self.eject()
 
 
@@ -330,11 +470,11 @@ class DemoWatcher(Watcher):
         fp = hashlib.sha1(f"demo{k}".encode()).hexdigest()[:16]
         self.rip(book, toc, fp)
 
-    def track_cmd(self, n, wav):
+    def track_cmd(self, n, wav, offset=0):
         freq = 220 + 110 * ((self.pending or 1) % 4) + 20 * n
-        secs = next(s for t, s, _ in self._toc if t == n) / SECTORS_PER_SEC
+        secs = (next(s for t, s, _ in self._toc if t == n) - offset) / SECTORS_PER_SEC
         tmp = wav + ".gen.wav"
-        stuck = "1" if (os.environ.get("DEMO_STUCK") and n == 2) else "0"
+        stuck = "1" if (os.environ.get("DEMO_STUCK") and n == 2 and offset == 0) else "0"
         gen = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i",
                f"sine=frequency={freq}:duration={secs}", "-ac", "2", "-ar", "44100", tmp]
         write = [sys.executable, "-m", "ripper.demo_writer", tmp, wav, stuck]

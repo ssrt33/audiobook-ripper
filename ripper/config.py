@@ -32,6 +32,9 @@ PARANOIA_OPTS = os.environ.get("PARANOIA_OPTS", "").split()
 
 # Give up on a track that has made no progress for this many minutes (0 = never give up).
 STUCK_LIMIT = int(os.environ.get("STUCK_LIMIT", "0"))
+# What to do when that limit is reached: "give_up" fails the disc; "skip" jumps over the bad spot,
+# fills it with silence and keeps ripping the rest of the disc.
+STUCK_ACTION = os.environ.get("STUCK_ACTION", "give_up")
 
 # Defaults for new books (changeable per book in the web page).
 DEFAULT_BITRATE = os.environ.get("DEFAULT_BITRATE", "128k")
