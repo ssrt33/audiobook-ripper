@@ -141,21 +141,56 @@ def send_email(subject, summary, text, filename, to=None):
     msg["To"] = to
     msg.set_content(summary + "\n\n" + text)
     msg.add_attachment(text.encode(), maintype="text", subtype="plain", filename=filename)
-    ctx = ssl.create_default_context()
-    if config.SMTP_PORT == 465:
-        server = smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT, timeout=30, context=ctx)
+    tries = []
+    for host, port, use_ssl in _smtp_attempts():
+        try:
+            _smtp_send(host, port, use_ssl, msg)
+            if (port, use_ssl) != (config.SMTP_PORT, config.SMTP_PORT == 465):
+                log.info("email went out on %s:%d (%s); set SMTP_PORT=%d to skip the first try",
+                         host, port, "SSL" if use_ssl else "STARTTLS", port)
+            return f"email to {to}"
+        except smtplib.SMTPAuthenticationError as e:
+            # Wrong user/password: trying other ports won't help.
+            raise RuntimeError("the mail server rejected the username or password"
+                               + (" (for Gmail, use an app password, not your normal one)" if "gmail" in host else "")
+                               + f": {e.smtp_code} {e.smtp_error.decode(errors='replace')[:120]}") from e
+        except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, ssl.SSLError, OSError) as e:
+            tries.append(f"{port} {'SSL' if use_ssl else 'STARTTLS'}: {e or type(e).__name__}")
+            log.info("email attempt to %s failed: %s", host, tries[-1])
+    raise RuntimeError(f"couldn't talk to {host}. Tried " + "; ".join(tries) + ". "
+                       "Check SMTP_HOST is just the server name (e.g. smtp.gmail.com) and that the NAS can reach it.")
+
+
+def _smtp_attempts():
+    """The configured port with its usual encryption first, then the other common setups."""
+    host = config.SMTP_HOST.strip()
+    if host.count(":") == 1 and host.rsplit(":", 1)[1].isdigit():  # "smtp.gmail.com:587" in SMTP_HOST
+        host, port = host.rsplit(":", 1)
+        first = int(port)
     else:
-        server = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30)
+        first = config.SMTP_PORT
+    seen, out = set(), []
+    for port, use_ssl in [(first, first == 465), (first, first != 465), (587, False), (465, True)]:
+        if (port, use_ssl) not in seen:
+            seen.add((port, use_ssl))
+            out.append((host, port, use_ssl))
+    return out
+
+
+def _smtp_send(host, port, use_ssl, msg):
+    ctx = ssl.create_default_context()
+    if use_ssl:
+        server = smtplib.SMTP_SSL(host, port, timeout=20, context=ctx)
+    else:
+        server = smtplib.SMTP(host, port, timeout=20)
     with server:
-        if config.SMTP_PORT != 465:
+        server.ehlo()
+        if not use_ssl and server.has_extn("starttls"):
+            server.starttls(context=ctx)
             server.ehlo()
-            if server.has_extn("starttls"):
-                server.starttls(context=ctx)
-                server.ehlo()
         if config.SMTP_USER:
             server.login(config.SMTP_USER, config.SMTP_PASSWORD)
         server.send_message(msg)
-    return f"email to {to}"
 
 
 def deliver(book):

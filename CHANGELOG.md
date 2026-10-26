@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1 — 2026-10-25
+
+### Fixed
+- **Email "Connection unexpectedly closed".** When the mail server hangs up because the port and
+  encryption don't match (port 465 wants SSL from the start, 587 wants STARTTLS), the ripper now
+  tries the other combination and the other common port by itself. A wrong password gets its own
+  clear message (with a reminder that Gmail needs an app password), and when nothing works the
+  error lists every port it tried. `SMTP_HOST: smtp.gmail.com:587` is also understood now.
+
 ## 1.6.0 — 2026-10-25
 
 ### Added

@@ -168,7 +168,9 @@ make an [app password](https://myaccount.google.com/apppasswords) (needs 2-step 
       SMTP_PASSWORD: "abcd efgh ijkl mnop"   # the app password, not your normal one
 ```
 
-Redeploy, then press **Test** next to the email address. Other providers work the same way with
+Redeploy, then press **Test** next to the email address. If the server hangs up because the port and encryption
+don't match, the ripper tries the other combination (587 with STARTTLS, 465 with SSL) on its own,
+and if every try fails the message lists what it tried. Other providers work the same way with
 their own server and port (`465` for SSL, `587` for STARTTLS). `SMTP_FROM` sets a different sender.
 
 ## Is it stuck?
