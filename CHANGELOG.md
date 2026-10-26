@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 — 2026-10-25
+
+### Added
+- **Bad-spot limit per disc.** With *Skip the bad spot and keep going* on, a new **Give up on a
+  disc after** setting (1, 2, 3, 5 or 10 bad spots, or never; default 5) stops the rip once
+  automatic skipping goes past the limit. The disc is marked failed and ejected, with a phone
+  alert, so you can clean it and re-rip it into the same slot. Also settable with `MAX_SKIPS`.
+  A long scratch that needs several jumps in a row counts as one spot; skipping by hand is
+  never blocked.
+- **Act after 3 minutes** option for **When a track is stuck**, for quicker unattended skips.
+
 ## 1.6.1 — 2026-10-25
 
 ### Fixed

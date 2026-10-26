@@ -35,6 +35,10 @@ STUCK_LIMIT = int(os.environ.get("STUCK_LIMIT", "0"))
 # What to do when that limit is reached: "give_up" fails the disc; "skip" jumps over the bad spot,
 # fills it with silence and keeps ripping the rest of the disc.
 STUCK_ACTION = os.environ.get("STUCK_ACTION", "give_up")
+# With STUCK_ACTION=skip: how many bad spots one disc may have skipped automatically before the app
+# gives up on it (ejects it so you can clean it and re-rip). 0 = no limit. A long scratch that
+# needs several jumps in a row counts as one spot.
+MAX_SKIPS = int(os.environ.get("MAX_SKIPS", "5") or 0)
 
 # Defaults for new books (changeable per book in the web page).
 DEFAULT_BITRATE = os.environ.get("DEFAULT_BITRATE", "128k")

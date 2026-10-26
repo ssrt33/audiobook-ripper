@@ -166,6 +166,13 @@ class Watcher(threading.Thread):
                 pieces.append(("file", (piece, None)))
                 break
             # outcome == "skip": keep what we have, jump over the bad spot, rip the rest.
+            # Stuck again within SKIP_NEAR of the last jump = still the same scratch, not a new spot.
+            new_spot = not (gaps and gaps[-1]["end"] == offset and good < SKIP_NEAR)
+            if new_spot:
+                self.disc_spots = getattr(self, "disc_spots", 0) + 1
+                if self.auto_skipped and config.MAX_SKIPS and self.disc_spots > config.MAX_SKIPS:
+                    raise RuntimeError(f"Track {n} hit bad spot number {self.disc_spots} on this disc (the limit is "
+                                       f"{config.MAX_SKIPS}), so the app gave up. Clean the disc and put it back in.")
             if good < SKIP_NEAR and gaps and gaps[-1]["end"] == offset:
                 skip_len = min(skip_len * 2, SKIP_MAX)   # stuck again right after the last jump
             else:
@@ -214,6 +221,7 @@ class Watcher(threading.Thread):
         piece_start = last_growth = time.time()
         last_size = 0
         outcome = None
+        self.auto_skipped = False
         try:
             while p.poll() is None:
                 time.sleep(1)
@@ -245,6 +253,7 @@ class Watcher(threading.Thread):
                 if limit and stalled >= limit:
                     if config.STUCK_ACTION == "skip":
                         log.info("track %d stuck for %d minutes: skipping the bad spot", n, config.STUCK_LIMIT)
+                        self.auto_skipped = True
                         outcome = "skip"
                         break
                     raise RuntimeError(f"Track {n} was stuck for {config.STUCK_LIMIT} minutes, so the app gave up. "
@@ -362,6 +371,7 @@ class Watcher(threading.Thread):
 
         self.abort = None
         self.skip = False
+        self.disc_spots = 0   # bad spots skipped on this disc so far
         title = book["title"] or "your book"
         try:
             for i, (n, sectors, _) in enumerate(toc):

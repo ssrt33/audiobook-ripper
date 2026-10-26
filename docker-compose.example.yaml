@@ -29,6 +29,9 @@ services:
       DEFAULT_CHANNELS: "2"
       DEFAULT_CHAPTERS: disc
       AUDIBLE_REGION: us
+      # STUCK_LIMIT: "3"        # act on a stuck track after 3 minutes (or 5, 10, 20, 30; 0 = just warn)
+      # STUCK_ACTION: skip      # skip the bad spot instead of giving up on the disc
+      # MAX_SKIPS: "5"          # ...but give up on a disc after this many bad spots (0 = no limit)
       # NOTIFY_URL: https://ntfy.sh/pick-a-long-random-topic-name
       # Bad-spot reports by email (see README). For Gmail use an app password:
       # REPORT_EMAIL: you@gmail.com

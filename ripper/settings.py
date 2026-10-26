@@ -13,7 +13,8 @@ from . import config
 RIP_MODES = {"normal": [], "fast": ["-Y"], "thorough": ["-z"]}
 BITRATES = ["48k", "64k", "96k", "128k"]
 CHAPTERS = ["disc", "track", "none"]
-STUCK_LIMITS = [0, 5, 10, 20, 30]
+STUCK_LIMITS = [0, 3, 5, 10, 20, 30]
+MAX_SKIPS = [0, 1, 2, 3, 5, 10]
 STUCK_ACTIONS = ["give_up", "skip"]
 REGIONS = ["us", "uk", "ca", "au", "de", "fr", "it", "es", "in", "jp"]
 
@@ -39,6 +40,7 @@ def current():
         "rip_mode": _rip_mode_from_opts(config.PARANOIA_OPTS),
         "stuck_limit": config.STUCK_LIMIT,
         "stuck_action": config.STUCK_ACTION,
+        "max_skips": config.MAX_SKIPS,
         "audible_region": config.AUDIBLE_REGION,
         "notify_url": config.NOTIFY_URL,
         "report_email": config.REPORT_EMAIL,
@@ -65,6 +67,8 @@ def _apply(data):
         config.PARANOIA_OPTS = list(RIP_MODES[data["rip_mode"]]); changed.append("rip_mode")
     if "stuck_limit" in data and str(data["stuck_limit"]).isdigit() and int(data["stuck_limit"]) in STUCK_LIMITS:
         config.STUCK_LIMIT = int(data["stuck_limit"]); changed.append("stuck_limit")
+    if "max_skips" in data and str(data["max_skips"]).isdigit() and int(data["max_skips"]) in MAX_SKIPS:
+        config.MAX_SKIPS = int(data["max_skips"]); changed.append("max_skips")
     if data.get("stuck_action") in STUCK_ACTIONS:
         config.STUCK_ACTION = data["stuck_action"]; changed.append("stuck_action")
     if data.get("audible_region") in REGIONS:

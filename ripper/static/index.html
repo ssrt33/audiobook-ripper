@@ -329,8 +329,9 @@ function renderSettings() {
         ${sel("bitrate", "Quality", [["48k","48 kbps"],["64k","64 kbps"],["96k","96 kbps"],["128k","128 kbps"]])}
         ${sel("chapters", "Chapters", [["disc","One per disc"],["track","One per track"],["none","None"]])}
         ${sel("rip_mode", "Rip mode", [["normal","Normal"],["fast","Fast (clean discs)"],["thorough","Thorough (scratched)"]])}
-        ${sel("stuck_limit", "When a track is stuck", [["0","Just warn me"],["5","Act after 5 minutes"],["10","Act after 10 minutes"],["20","Act after 20 minutes"],["30","Act after 30 minutes"]])}
+        ${sel("stuck_limit", "When a track is stuck", [["0","Just warn me"],["3","Act after 3 minutes"],["5","Act after 5 minutes"],["10","Act after 10 minutes"],["20","Act after 20 minutes"],["30","Act after 30 minutes"]])}
         ${sel("stuck_action", "What to do then", [["give_up","Give up on the disc"],["skip","Skip the bad spot and keep going"]])}
+        ${sel("max_skips", "Give up on a disc after", [["1","1 bad spot"],["2","2 bad spots"],["3","3 bad spots"],["5","5 bad spots"],["10","10 bad spots"],["0","Never (skip them all)"]])}
         ${sel("audible_region", "Lookup region", ["us","uk","ca","au","de","fr","it","es","in","jp"].map(r => [r, r.toUpperCase()]))}
       </div>
       <div class="sub-h">Phone alerts</div>
@@ -421,7 +422,7 @@ function cueFor(b) {
     if (ripping.stuck) {
       return {cls:"stuck", big: ripping.message, pct, info,
         sub: `No progress for ${dur(ripping.stalled)}. The disc is probably scratched or dirty and the drive is re-reading the same spot. ` +
-             `It may still get past it on its own${S.settings.stuck_limit ? `; the app ${S.settings.stuck_action === "skip" ? "skips the bad spot" : "gives up"} after ${S.settings.stuck_limit} minutes` : ""}. ` +
+             `It may still get past it on its own${S.settings.stuck_limit ? `; the app ${S.settings.stuck_action === "skip" ? "skips the bad spot" + (S.settings.max_skips ? ` (up to ${S.settings.max_skips} per disc)` : "") : "gives up"} after ${S.settings.stuck_limit} minutes` : ""}. ` +
              `Skipping keeps everything else and leaves a short silent gap where the bad spot is.`,
         action: `<button class="btn primary" onclick="skipSpot('${esc(ripping.device)}')">Skip the bad spot</button>
                  <button class="btn" onclick="giveUp('${esc(ripping.device)}')">Give up on this disc</button>`};

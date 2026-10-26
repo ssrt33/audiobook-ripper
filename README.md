@@ -191,10 +191,15 @@ scratch or smudge that the drive keeps re-reading. Your options:
   `Track 9: 2s skipped at 14:05`), so you can listen there, and the "disc done" alert mentions it.
 - **Press "Give up on this disc".** The rip stops, the disc is marked failed and ejected. Clean it
   (wipe from the centre outwards) and put it back in; it re-rips into the same slot.
-- **Let the app decide.** In Settings, set **When a track is stuck** to act after 5–30 minutes,
+- **Let the app decide.** In Settings, set **When a track is stuck** to act after 3–30 minutes,
   and **What to do then** to either *Give up on the disc* or *Skip the bad spot and keep going*.
   Skipping is the better choice for unattended rips of audiobooks, where a second or two of
   silence usually costs a word or two.
+- **Limit how many spots get skipped.** **Give up on a disc after** (default *5 bad spots*) stops a
+  badly damaged disc from turning into a patchwork: when automatic skipping reaches one more spot
+  than the limit, the disc is marked failed and ejected, with a phone alert, so you can clean it
+  and re-rip it into the same slot. A long scratch that needs several jumps in a row counts as one
+  spot, and pressing **Skip the bad spot** yourself is never blocked.
 - **For badly scratched discs**, set **Rip mode** to *Thorough* before re-inserting. It's slower but
   tries harder. *Fast* is the opposite: quicker on clean discs, less careful on damaged ones.
 
