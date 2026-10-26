@@ -30,6 +30,12 @@ services:
       DEFAULT_CHAPTERS: disc
       AUDIBLE_REGION: us
       # NOTIFY_URL: https://ntfy.sh/pick-a-long-random-topic-name
+      # Bad-spot reports by email (see README). For Gmail use an app password:
+      # REPORT_EMAIL: you@gmail.com
+      # SMTP_HOST: smtp.gmail.com
+      # SMTP_PORT: "587"
+      # SMTP_USER: you@gmail.com
+      # SMTP_PASSWORD: "abcd efgh ijkl mnop"
     volumes:
       - /path/to/audiobooks:/audiobooks                # finished books land here
       - /path/to/audiobook-ripper/work:/work           # temporary rips

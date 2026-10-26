@@ -5,6 +5,7 @@ Paths, drives and file ownership stay in the YAML only.
 """
 import json
 import os
+import re
 import threading
 
 from . import config
@@ -40,6 +41,8 @@ def current():
         "stuck_action": config.STUCK_ACTION,
         "audible_region": config.AUDIBLE_REGION,
         "notify_url": config.NOTIFY_URL,
+        "report_email": config.REPORT_EMAIL,
+        "smtp_ready": bool(config.SMTP_HOST),
     }
 
 
@@ -71,6 +74,11 @@ def _apply(data):
         if url and not url.startswith(("http://", "https://")):
             raise ValueError("The alert address must start with http:// or https://")
         config.NOTIFY_URL = url; changed.append("notify_url")
+    if "report_email" in data:
+        addr = str(data["report_email"] or "").strip()
+        if addr and not re.fullmatch(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+", addr):
+            raise ValueError("That doesn't look like an email address")
+        config.REPORT_EMAIL = addr; changed.append("report_email")
     return changed
 
 

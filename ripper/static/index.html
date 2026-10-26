@@ -113,6 +113,7 @@ select option{background:var(--panel)}
 .btn.ghost:hover{background:var(--panel2);color:var(--ink)}
 .btn.danger{color:var(--bad)}
 .btn.danger:hover{background:var(--bad-soft);color:var(--bad)}
+a.btn{text-decoration:none;color:inherit}
 .btn:disabled{opacity:.4;cursor:default;box-shadow:none;filter:none}
 
 /* discs */
@@ -336,13 +337,20 @@ function renderSettings() {
       <div class="f"><label>Alert address (for example an ntfy.sh topic link)</label>
         <div class="row"><input data-s="notify_url" placeholder="Off" autocomplete="off">
         <button class="btn small" onclick="testAlert()">Test</button></div></div>
+      <div class="sub-h">Bad-spot reports</div>
+      <div class="f"><label>Email reports to</label>
+        <div class="row"><input data-s="report_email" type="email" placeholder="Off" autocomplete="off">
+        <button class="btn small" onclick="testEmail()">Test</button></div></div>
+      <div class="muted" id="reportHint" style="font-size:12px;margin-top:6px"></div>
       <div class="muted saved" id="savedNote">Changes save automatically.</div>`;
     el.querySelectorAll("[data-s]").forEach(inp => {
-      const ev = inp.dataset.s === "notify_url" ? "change" : "input";
+      const ev = ["notify_url", "report_email"].includes(inp.dataset.s) ? "change" : "input";
       inp.addEventListener(ev, () => saveSetting(inp));
     });
   }
   $("#libPath").textContent = s.library;
+  $("#reportHint").textContent = "When a finished book had skipped or stuck spots, a .txt report goes to your phone alerts"
+    + (s.smtp_ready ? " and this email." : ". Email also needs SMTP settings in the stack (see README).");
   el.querySelectorAll("[data-s]").forEach(inp => {
     if (inp === document.activeElement && inp.type !== "checkbox") return;
     const v = s[inp.dataset.s];
@@ -367,6 +375,13 @@ async function testAlert() {
   catch (e) { toast(e.message); }
 }
 
+async function testEmail() {
+  const inp = document.querySelector('[data-s="report_email"]');
+  if (inp.value !== (S.settings.report_email || "")) await saveSetting(inp);
+  try { await api("POST", "/api/settings/test-email"); toast("Test email sent"); }
+  catch (e) { toast(e.message); }
+}
+
 function renderLibrary() {
   if (!S.books.length) { $("#library").innerHTML = `<div class="settings">No books yet. Put a disc in to start one.</div>`; return; }
   $("#library").innerHTML = S.books.map(b => {
@@ -381,9 +396,11 @@ function renderLibrary() {
         ${b.status === "building" ? `<div class="bar"><i style="width:${b.progress}%"></i></div>` : ""}
         ${b.status === "failed" ? `<div class="err">${esc(b.error)}</div>` : ""}
         ${b.status === "done" ? `<div class="path" style="margin-top:4px">${esc(b.output)}</div>` : ""}
+        ${b.report ? `<div class="err" style="color:var(--accent)">${esc(b.report.summary.split(": ").slice(1).join(": "))}</div>` : ""}
         <div class="row-actions">
           ${b.status !== "done" && b.id !== viewing ? `<button class="btn small" onclick="view('${b.id}')">Open</button>` : ""}
           ${b.status === "failed" ? `<button class="btn small" onclick="finish('${b.id}')">Retry</button>` : ""}
+          ${b.report ? `<a class="btn small" href="/api/books/${b.id}/report">Report</a>` : ""}
           ${b.status === "done" && !b.rips_deleted ? `<button class="btn small" onclick="view('${b.id}')">Edit &amp; rebuild</button>` : ""}
           ${b.status !== "building" ? `<button class="btn small ghost danger" onclick="delBook('${b.id}')">${b.status === "done" ? "Forget" : "Delete"}</button>` : ""}
         </div>

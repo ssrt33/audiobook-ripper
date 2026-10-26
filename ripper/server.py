@@ -179,6 +179,30 @@ def test_alert():
     return jsonify({"ok": True})
 
 
+@app.post("/api/settings/test-email")
+def test_email():
+    from . import report
+    if not config.SMTP_HOST:
+        return err("Email isn't set up yet: add SMTP_HOST, SMTP_USER and SMTP_PASSWORD to the stack (see README)")
+    if not config.REPORT_EMAIL:
+        return err("Enter an email address first")
+    try:
+        report.send_email("Audiobook Ripper test", "Test email: bad-spot reports will arrive like this.",
+                          "This is what a rip report attachment looks like.\n", "test-report.txt")
+    except Exception as e:
+        return err(f"Couldn't send: {e}")
+    return jsonify({"ok": True})
+
+
+@app.get("/api/books/<bid>/report")
+def get_report(bid):
+    b = get_book(bid)
+    p = (b.get("report") or {}).get("path")
+    if not p or not os.path.exists(p):
+        raise LookupError
+    return send_file(p, mimetype="text/plain", as_attachment=True, download_name=os.path.basename(p))
+
+
 @app.get("/api/books/<bid>/cover")
 def get_cover(bid):
     b = get_book(bid)

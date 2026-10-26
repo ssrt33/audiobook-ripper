@@ -172,7 +172,18 @@ class Worker(threading.Thread):
                     book.update(status="done", progress=100, output=out, finished=time.time())
                     store.save()
                 log.info("finished %s -> %s", book["id"], out)
-                notify("Audiobook ready", f"{book['title']} is in your library.")
+                rep = None
+                try:
+                    from . import report
+                    rep = report.deliver(book)
+                except Exception as e:  # a report problem must never fail the book
+                    log.warning("rip report failed: %s", e)
+                with store.lock():
+                    book["report"] = rep
+                    store.save()
+                if not (rep and any(s.startswith("phone") for s in rep["sent"])):
+                    notify("Audiobook ready", f"{book['title']} is in your library."
+                           + (f" {rep['summary'].split(': ', 1)[-1]}" if rep else ""))
                 if not config.KEEP_RIPS:
                     shutil.rmtree(store.book_dir(book["id"]), ignore_errors=True)
                     with store.lock():

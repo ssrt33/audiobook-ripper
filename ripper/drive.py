@@ -154,6 +154,7 @@ class Watcher(threading.Thread):
         """
         start = time.time()
         self.skip = False
+        self.max_stall = 0    # longest stretch with no new audio, for the bad-spot report
         offset = 0            # sector the current piece started at
         pieces, gaps = [], []
         skip_len = SKIP_START
@@ -224,6 +225,7 @@ class Watcher(threading.Thread):
                 if size > last_size:
                     last_size, last_growth = size, now
                 stalled = now - last_growth
+                self.max_stall = max(getattr(self, "max_stall", 0), stalled)
                 done = offset * BYTES_PER_SECTOR + size
                 speed = (done / BYTES_PER_SECTOR / SECTORS_PER_SEC) / max(now - start, 1)
                 stuck = stalled >= STALL_WARN
@@ -389,6 +391,8 @@ class Watcher(threading.Thread):
                 to_flac(wav, flac)
                 with store.lock():
                     t = {"n": n, "file": os.path.basename(flac), "seconds": sectors / SECTORS_PER_SEC}
+                    if self.max_stall >= STALL_WARN:
+                        t["stuck_secs"] = int(self.max_stall)
                     if gaps:
                         t["gaps"] = gaps
                         disc["skipped"] = round(disc.get("skipped", 0) + sum(g["len"] for g in gaps), 1)

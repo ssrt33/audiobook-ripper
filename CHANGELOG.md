@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.0 — 2026-10-25
+
+### Added
+- **Bad-spot report.** When a book finishes building and any disc had skipped or stuck spots,
+  the app writes a .txt report listing each one with its position in the finished book (and
+  chapter), so you can jump to it in Audiobookshelf. Clean books don't get one.
+- The report is **attached to the "Audiobook ready" phone alert** (ntfy), falling back to the
+  report as the message text for servers that don't take attachments.
+- **Email reports**: set the address on the page and `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` in
+  the stack (Gmail app passwords work). **Test** button next to the address.
+- **Report** button on finished books in the Books list; reports are also kept in `config/reports`.
+- Tracks that got stuck for 2+ minutes but recovered are now remembered, so the report can
+  point them out.
+
 ## 1.5.0 — 2026-10-23
 
 ### Added

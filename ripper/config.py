@@ -53,6 +53,16 @@ ITUNES_COUNTRY = os.environ.get("ITUNES_COUNTRY", "us")
 # https://ntfy.sh/my-secret-topic
 NOTIFY_URL = os.environ.get("NOTIFY_URL", "").strip()
 
+# Bad-spot reports by email (sent after a book with skipped or stuck spots is built).
+# REPORT_EMAIL can also be set on the page. For Gmail: SMTP_HOST=smtp.gmail.com, SMTP_PORT=587,
+# SMTP_USER=you@gmail.com and SMTP_PASSWORD=an app password (myaccount.google.com/apppasswords).
+REPORT_EMAIL = os.environ.get("REPORT_EMAIL", "").strip()
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587") or 587)
+SMTP_USER = os.environ.get("SMTP_USER", "").strip()
+SMTP_PASSWORD = "".join(os.environ.get("SMTP_PASSWORD", "").split())  # app passwords are shown with spaces
+SMTP_FROM = os.environ.get("SMTP_FROM", "").strip()
+
 # Ownership for files written to the library (TrueNAS "apps" user is 568).
 PUID = int(os.environ.get("PUID", "568"))
 PGID = int(os.environ.get("PGID", "568"))

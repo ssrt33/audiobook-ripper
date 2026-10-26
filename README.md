@@ -123,12 +123,53 @@ What you'll get:
 
 - **Disc done**: "Disc 3 of *Book* is ripped. Insert disc 4."
 - **Disc failed**: which disc and why, so you can clean it and put it back in.
-- **Audiobook ready**: the M4B is in your library.
+- **Audiobook ready**: the M4B is in your library. If it had bad spots, this alert carries the
+  [bad-spot report](#bad-spot-reports) as an attached .txt instead.
 - **Build failed**: if a book couldn't be built.
 
 If the test doesn't arrive, check the app's notification permission, then look at the app's logs for
 a `notify failed` line (the NAS may not be able to reach ntfy.sh). Any service that accepts a
 plain-text POST works too, including a self-hosted ntfy server.
+
+## Bad-spot reports
+
+When a book finishes building and any of its discs had trouble, you get a short .txt report:
+
+```
+SKIPPED (replaced with silence – audio is missing here)
+  Book time   Chapter            Disc / track   In track   Length
+    5:12:40   Disc 9             Disc  9 /  4       2:05   2s
+
+STUCK BUT RECOVERED (nothing skipped – worth a listen, may have clicks)
+  Track starts  Chapter            Disc / track   Stuck for
+    6:01:15     Disc 11            Disc 11 /  2   6:50
+```
+
+**Book time** is where the spot is in the finished book, so you can jump straight to it in
+Audiobookshelf and hear whether it matters. Books that ripped cleanly don't get a report.
+
+Where it goes:
+
+- **Your phone**, attached to the "Audiobook ready" alert, if phone alerts are on. (A server that
+  doesn't take attachments gets the report as the message text instead.)
+- **Email**, if you set it up (below).
+- The **Report** button on the book in the Books list, and the `reports` folder in the app's config folder.
+
+### Email
+
+Put the address in **Settings → Email reports to**, and add your mail server to the stack. For Gmail,
+make an [app password](https://myaccount.google.com/apppasswords) (needs 2-step verification on), then:
+
+```yaml
+      REPORT_EMAIL: you@gmail.com
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USER: you@gmail.com
+      SMTP_PASSWORD: "abcd efgh ijkl mnop"   # the app password, not your normal one
+```
+
+Redeploy, then press **Test** next to the email address. Other providers work the same way with
+their own server and port (`465` for SSL, `587` for STARTTLS). `SMTP_FROM` sets a different sender.
 
 ## Is it stuck?
 
