@@ -71,6 +71,18 @@ aside{display:grid;gap:24px}
 .cue .info{font-size:13px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
 .cue-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
 .skipnote{color:#f5b860}
+.skiplist{display:grid;gap:4px;margin-top:6px}
+.skipline{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:#f5b860}
+.skipline .what{min-width:0}
+.mini-sw{display:inline-flex;align-items:center;gap:7px;flex:none;cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;user-select:none}
+.mini-sw input{position:absolute;opacity:0;pointer-events:none}
+.mini-sw i{width:30px;height:18px;border-radius:999px;background:var(--line2);position:relative;transition:background .15s}
+.mini-sw i::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#d9d4ca;transition:transform .18s}
+.mini-sw input:checked+i{background:var(--accent)}
+.mini-sw input:checked+i::after{transform:translateX(12px);background:#fff8ec}
+.mini-sw input:checked~span{color:var(--accent)}
+.mini-sw input:focus-visible+i{outline:2px solid var(--accent);outline-offset:2px}
+.reripnote{margin-top:6px;font-size:12.5px;color:var(--ink);background:var(--accent-soft);border:1px solid rgba(233,162,74,.35);border-radius:8px;padding:6px 10px}
 
 /* book editor */
 .book{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:24px}
@@ -523,11 +535,21 @@ function renderCurrent() {
   const total = b.discs.filter(d => d.status === "ready").reduce((a, d) => a + d.seconds, 0);
   $("#discList").innerHTML = `<h3><span>Discs</span><span>${b.discs.length} · ${fmt(total)}</span></h3>` + (b.discs.length ? b.discs.map((d, i) => {
     const pct = d.total_tracks ? Math.round(d.done_tracks / d.total_tracks * 100) : 0;
-    const status = d.status === "ripping" ? `Ripping track ${Math.min(d.done_tracks + 1, d.total_tracks)} of ${d.total_tracks}`
+    const status = d.status === "ripping" && d.rerip_now ? `Re-ripping track ${d.rerip_now}`
+      : d.status === "ripping" ? `Ripping track ${Math.min(d.done_tracks + 1, d.total_tracks)} of ${d.total_tracks}`
       : d.status === "error" ? esc(d.error) : `${d.total_tracks} tracks · ${fmt(d.seconds)}`;
     const skips = (d.tracks || []).filter(t => t.gaps && t.gaps.length);
-    const skipNote = skips.length ? `<div class="meta skipnote">⚠ ${skips.map(t => `Track ${t.n}: ${t.gaps.map(g =>
-      `${g.len}s skipped at ${Math.floor(g.at / 60)}:${String(Math.floor(g.at % 60)).padStart(2, "0")}`).join(", ")}`).join(" · ")} (silent gap — listen there)</div>` : "";
+    // Re-rip one track: only while its rip files still exist and the book isn't being built.
+    const canRerip = d.status === "ready" && !b.rips_deleted && !["queued", "building"].includes(b.status);
+    const marked = skips.filter(t => t.rerip);
+    const skipNote = skips.length ? `<div class="skiplist">${skips.map(t => `<div class="skipline">
+        <span class="what">⚠ Track ${t.n}: ${t.gaps.map(g => `${g.len}s skipped at ${Math.floor(g.at / 60)}:${String(Math.floor(g.at % 60)).padStart(2, "0")}`).join(", ")}</span>
+        ${canRerip ? `<label class="mini-sw" title="Rip this track again the next time this disc goes in">
+          <input type="checkbox" ${t.rerip ? "checked" : ""} onchange="setRerip('${d.id}', ${t.n}, this.checked)"><i></i><span>Re-rip</span></label>` : ""}
+      </div>`).join("")}</div>
+      ${marked.length ? `<div class="reripnote">Put disc ${i + 1} back in to re-rip track${marked.length > 1 ? "s" : ""} ${marked.map(t => t.n).join(", ")}. The other tracks stay as they are${b.status === "done" ? ", and the book is rebuilt afterwards" : ""}.</div>`
+        : canRerip ? `<div class="meta" style="margin-top:4px">Silent gap — listen there. To try again, clean the disc, switch on <b>Re-rip</b> for the track first, then put the disc back in.</div>`
+        : `<div class="meta" style="margin-top:4px">Silent gap — listen there.${b.rips_deleted ? " (Re-rip isn't available: the rips were deleted after the build.)" : ""}</div>`}` : "";
     return `<div class="disc ${d.status}">
       <div class="n">${i + 1}</div>
       <div><div class="title">Disc ${i + 1}</div><div class="meta">${status}</div>${skipNote}
@@ -572,6 +594,10 @@ async function act(fn) { try { await fn(); await refresh(); } catch (e) { toast(
 const view = id => { viewing = id; render(); window.scrollTo({top:0, behavior:"smooth"}); };
 const activate = id => act(async () => { await api("POST", `/api/books/${id}/activate`); viewing = id; });
 const finish = id => act(async () => { await saveNow(); await api("POST", `/api/books/${id}/finish`); toast("Queued for building"); });
+const setRerip = (did, n, on) => act(async () => {
+  await api("POST", `/api/books/${viewing}/discs/${did}/tracks/${n}/rerip`, {on});
+  if (on) toast(`Track ${n} will be re-ripped — put that disc back in`);
+});
 const moveDisc = (did, step) => act(() => api("POST", `/api/books/${viewing}/discs/${did}/move`, {step}));
 const delDisc = did => confirm("Remove this disc from the book? You can rip it again afterwards.") && act(() => api("DELETE", `/api/books/${viewing}/discs/${did}`));
 const delBook = id => {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0 — 2026-10-27
+
+### Added
+- **Re-rip a single track.** Tracks with skipped bad spots get a **Re-rip** switch on their disc
+  row. Switch it on, then put that disc back in: the ripper recognises the disc (even if its book
+  is already finished), rips only the switched-on tracks again, and keeps the new copy if it has no
+  more skipped audio than the old one. Other tracks are untouched. A finished book is rebuilt
+  automatically afterwards, with a fresh bad-spot report (or none, if it's now clean).
+  Needs the rip files, so for finished books **Keep rips after build** must be on.
+- Demo drive: `POST /api/demo/insert?again=1` puts test disc 1 back in, for trying re-rips.
+
 ## 1.7.0 — 2026-10-25
 
 ### Added

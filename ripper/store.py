@@ -142,6 +142,21 @@ def queued_book():
     return None
 
 
+def rerip_pending():
+    """Any track anywhere switched to re-rip on its next insert?"""
+    return any(t.get("rerip") for b in _state["books"].values() for d in b["discs"] for t in d["tracks"])
+
+
+def rerip_target(fingerprint):
+    """(book, disc) waiting for this disc to come back for a re-rip, or None."""
+    with _lock:
+        for b in books():
+            for d in b["discs"]:
+                if d["fingerprint"] == fingerprint and d["status"] == "ready" and any(t.get("rerip") for t in d["tracks"]):
+                    return b, d
+    return None
+
+
 def delete_book(book_id):
     with _lock:
         _state["books"].pop(book_id, None)

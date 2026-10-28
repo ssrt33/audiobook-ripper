@@ -200,6 +200,12 @@ scratch or smudge that the drive keeps re-reading. Your options:
   than the limit, the disc is marked failed and ejected, with a phone alert, so you can clean it
   and re-rip it into the same slot. A long scratch that needs several jumps in a row counts as one
   spot, and pressing **Skip the bad spot** yourself is never blocked.
+- **Re-rip just the bad tracks later.** Each track with a skipped spot has a **Re-rip** switch on its
+  disc row. Clean the disc, **switch Re-rip on for the track first**, then put the disc back in: only
+  those tracks are ripped again and swapped in (the new copy is kept only if it has no more skipped
+  audio than the old one), and the other tracks stay as they are. If the book was already built, it
+  is rebuilt on its own afterwards. This needs the disc's rip files, so it works until the book is
+  built, or afterwards if **Keep rips after build** is on.
 - **For badly scratched discs**, set **Rip mode** to *Thorough* before re-inserting. It's slower but
   tries harder. *Fast* is the opposite: quicker on clean discs, less careful on damaged ones.
 

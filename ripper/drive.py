@@ -93,6 +93,7 @@ class Watcher(threading.Thread):
         self.abort = None         # set to a reason to stop the current rip right away
         self.skip = False         # set to jump over the bad spot in the current track
         self.handled = False  # we've already dealt with the disc currently in the tray
+        self._toc_cache = None  # (toc, fingerprint) of the disc in the tray, read before picking a book
         store.set_drive(dev, state="starting", message="")
 
     # ---- low level ----
@@ -315,6 +316,7 @@ class Watcher(threading.Thread):
 
         if st != CDS_DISC_OK:
             self.handled = False
+            self._toc_cache = None
             label = {CDS_TRAY_OPEN: "open", CDS_NO_DISC: "empty", CDS_DRIVE_NOT_READY: "reading"}.get(st, "empty")
             msg = {"open": "Tray open", "empty": "No disc", "reading": "Reading disc…"}[label]
             store.set_drive(self.dev, state=label, message=msg, book=None, disc=None, track=0, tracks=0)
@@ -328,6 +330,20 @@ class Watcher(threading.Thread):
             self.eject()
             return
 
+        if store.rerip_pending():
+            # A track is switched to re-rip: see whether this is that disc before picking a book.
+            if self._toc_cache is None:
+                store.set_drive(self.dev, state="ripping", message="Reading track list…")
+                toc = self.read_toc()
+                self._toc_cache = (toc, fingerprint(toc))
+            toc, fp = self._toc_cache
+            hit = store.rerip_target(fp)
+            if hit:
+                self.handled = True
+                self._toc_cache = None
+                self.rerip(hit[0], hit[1], toc)
+                return
+
         with store.lock():
             book = store.active_book()
             if not book or book["status"] != "collecting":
@@ -336,14 +352,20 @@ class Watcher(threading.Thread):
                     return  # not handled; we'll rip once a book is opened
                 book = store.new_book()
 
+        if self._toc_cache:
+            self.handled = True
+            store.set_drive(self.dev, state="ripping", message="Reading track list…", book=book["id"])
+            toc, fp = self._toc_cache
+            self._toc_cache = None
+            self.rip(book, toc, fp)
+            return
         self.handle_disc(book)
 
     def handle_disc(self, book):
         self.handled = True
         store.set_drive(self.dev, state="ripping", message="Reading track list…", book=book["id"])
         toc = self.read_toc()
-        fp = hashlib.sha1(repr([(n, s, b) for n, s, b in toc]).encode()).hexdigest()[:16]
-        self.rip(book, toc, fp)
+        self.rip(book, toc, fingerprint(toc))
 
 
     def rip(self, book, toc, fp):
@@ -443,6 +465,115 @@ class Watcher(threading.Thread):
         self.eject()
 
 
+    def rerip(self, book, disc, toc):
+        """Rip again only the tracks switched to re-rip, and keep whichever copy is better.
+
+        The other tracks stay as they are. A new copy replaces the old one if it has no more
+        skipped audio than before. If the book was already built, it's rebuilt afterwards.
+        """
+        sectors_of = {n: s for n, s, _ in toc}
+        todo = [t for t in sorted(disc["tracks"], key=lambda t: t["n"]) if t.get("rerip")]
+        num = book["discs"].index(disc) + 1
+        title = book["title"] or "your book"
+        ddir = os.path.join(store.book_dir(book["id"]), disc["id"])
+        if book["status"] in ("queued", "building") or not os.path.isdir(ddir):
+            why = "it's being built right now" if book["status"] in ("queued", "building") else "its rips are gone"
+            store.set_drive(self.dev, state="idle", message=f"Can't re-rip disc {num}: {why} — ejected")
+            self.eject()
+            return
+        with store.lock():
+            disc["status"] = "ripping"
+            store.save()
+        self.abort = None
+        self.skip = False
+        self.disc_spots = 0
+        results = []
+        try:
+            for k, t in enumerate(todo):
+                n = t["n"]
+                if n not in sectors_of:
+                    results.append(f"track {n}: not on this disc, kept the old copy")
+                    continue
+                label = f"Disc {num}: re-ripping track {n} ({k + 1} of {len(todo)})"
+                with store.lock():
+                    disc["rerip_now"] = n
+                store.set_drive(self.dev, state="ripping", message=label, book=book["id"], disc=disc["id"],
+                                track=k, tracks=len(todo), track_pct=0, speed=0, elapsed=0, stalled=0, stuck=False)
+
+                def status(**kw):
+                    if self.abort:
+                        return
+                    if kw.pop("notify", False):
+                        notify("Re-rip looks stuck", f"Disc {num} of {title}, track {n} is stuck again.")
+                        return
+                    if kw.pop("message_override", None) == "skipping":
+                        store.set_drive(self.dev, message=f"Disc {num}: skipping the bad spot in track {n}", **kw)
+                        return
+                    store.set_drive(self.dev, message=(f"Disc {num}: stuck re-ripping track {n}" if kw.get("stuck") else label), **kw)
+
+                wav = os.path.join(ddir, f"t{n:02d}.rerip.wav")
+                new_flac = os.path.join(ddir, f"t{n:02d}.rerip.flac")
+                try:
+                    gaps = self.rip_track(n, wav, sectors_of[n], status)
+                    to_flac(wav, new_flac)
+                except RuntimeError as e:
+                    for p in (wav, new_flac):
+                        if os.path.exists(p):
+                            os.remove(p)
+                    if self.abort:
+                        raise
+                    results.append(f"track {n}: re-rip failed ({e}), kept the old copy")
+                    continue
+                old, new = _gap_secs(t.get("gaps")), _gap_secs(gaps)
+                with store.lock():
+                    if new <= old:
+                        os.replace(new_flac, os.path.join(ddir, t["file"]))
+                        t.pop("gaps", None)
+                        t.pop("stuck_secs", None)
+                        if gaps:
+                            t["gaps"] = gaps
+                        if self.max_stall >= STALL_WARN:
+                            t["stuck_secs"] = int(self.max_stall)
+                        results.append(f"track {n}: now clean" if not gaps else
+                                       f"track {n}: {new:g}s still skipped (was {old:g}s)")
+                    else:
+                        os.remove(new_flac)
+                        results.append(f"track {n}: new copy was worse ({new:g}s skipped), kept the old one")
+                    t.pop("rerip", None)
+                    disc["skipped"] = round(sum(_gap_secs(x.get("gaps")) for x in disc["tracks"]), 1)
+                    store.save()
+        except Exception as e:
+            log.warning("re-rip of disc %d stopped: %s", num, e)
+            results.append(f"stopped: {e}")
+        finally:
+            with store.lock():
+                disc["status"] = "ready"
+                disc.pop("rerip_now", None)
+                rebuild = book["status"] == "done" and not book.get("rips_deleted")
+                if rebuild and any("now clean" in r or "still skipped" in r for r in results):
+                    book["status"] = "queued"
+                    book["error"] = ""
+                else:
+                    rebuild = False
+                store.save()
+        summary = "; ".join(results) or "nothing to do"
+        log.info("re-rip of disc %d of %s: %s", num, book["id"], summary)
+        store.set_drive(self.dev, state="idle", message=f"Disc {num} re-ripped — {summary}"[:160],
+                        book=book["id"], disc=None, track=0, tracks=0)
+        notify("Disc re-ripped", f"Disc {num} of {title}: {summary}." + (" Rebuilding the book." if rebuild else ""))
+        if rebuild:
+            from . import builder
+            builder.worker.wake.set()
+        self.eject()
+
+def _gap_secs(gaps):
+    return round(sum(g["len"] for g in gaps or []), 1)
+
+
+def fingerprint(toc):
+    return hashlib.sha1(repr([(n, s, b) for n, s, b in toc]).encode()).hexdigest()[:16]
+
+
 def to_flac(wav, flac):
     r = run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", wav, "-c:a", "flac", "-compression_level", "5", flac])
     if r.returncode != 0:
@@ -459,9 +590,12 @@ class DemoWatcher(Watcher):
         self.pending = None
         self.counter = 0
 
-    def insert(self):
-        self.counter += 1
-        self.pending = self.counter
+    def insert(self, again=None):
+        if again:   # put back a test disc inserted earlier (same track list), e.g. to re-rip it
+            self.pending = int(again)
+        else:
+            self.counter += 1
+            self.pending = self.counter
 
     def eject(self):
         self.pending = None
@@ -473,15 +607,20 @@ class DemoWatcher(Watcher):
             return
         if self.handled:
             return
-        with store.lock():
-            book = store.active_book()
-            if not book or book["status"] != "collecting":
-                book = store.new_book()
         self.handled = True
         k = self.pending
         # 3–4 short tracks per fake disc; the TOC differs per disc so each one is unique
         toc = [(i + 1, int(75 * (4 + i + k % 3)), 0) for i in range(3 + k % 2)]
         fp = hashlib.sha1(f"demo{k}".encode()).hexdigest()[:16]
+        self._toc = toc
+        hit = store.rerip_target(fp)
+        if hit:
+            self.rerip(hit[0], hit[1], toc)
+            return
+        with store.lock():
+            book = store.active_book()
+            if not book or book["status"] != "collecting":
+                book = store.new_book()
         self.rip(book, toc, fp)
 
     def track_cmd(self, n, wav, offset=0):

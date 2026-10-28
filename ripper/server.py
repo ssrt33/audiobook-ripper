@@ -147,6 +147,31 @@ def move_disc(bid, did):
     return jsonify(b)
 
 
+@app.post("/api/books/<bid>/discs/<did>/tracks/<int:n>/rerip")
+def set_rerip(bid, did, n):
+    """Switch a track to be ripped again the next time its disc goes in."""
+    b = get_book(bid)
+    on = bool((request.get_json(silent=True) or {}).get("on", True))
+    with store.lock():
+        d = store.find_disc(bid, did)
+        t = next((t for t in (d or {}).get("tracks", []) if t["n"] == n), None)
+        if not t:
+            raise LookupError
+        if on:
+            if d["status"] != "ready":
+                return err("Wait for this disc to finish first")
+            if b["status"] in ("queued", "building"):
+                return err("This book is being built right now; try again when it's done")
+            if b.get("rips_deleted") or not os.path.exists(os.path.join(store.book_dir(bid), did, t["file"])):
+                return err("The rips for this book were deleted after it was built, so one track can't be "
+                           "re-ripped on its own. Turn on Keep rips after build for next time.")
+            t["rerip"] = True
+        else:
+            t.pop("rerip", None)
+        store.save()
+    return jsonify(b)
+
+
 @app.delete("/api/books/<bid>/discs/<did>")
 def delete_disc(bid, did):
     b = get_book(bid)
@@ -307,7 +332,7 @@ def demo_insert():
     w = drive.watchers.get("demo")
     if not w:
         return err("Demo drive is off (add 'demo' to DRIVES)")
-    w.insert()
+    w.insert(again=request.args.get("again"))
     return jsonify({"ok": True})
 
 
